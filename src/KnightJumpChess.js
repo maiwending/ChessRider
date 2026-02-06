@@ -143,8 +143,30 @@ class KnightJumpChess extends Chess {
     const { square, piece } = options;
     const standardMoves = this._moves({ legal: false, square, piece });
     const jumpMoves = this.generateJumpMoves(options);
+    const moverColor = this.turn();
+
+    const safeStandardMoves = standardMoves.filter((move) => this._isStandardMoveSafe(move, moverColor));
+    const safeJumpMoves = jumpMoves.filter((move) => this._isJumpMoveSafe(move, moverColor));
 
     // If options.verbose is false, return just the SAN notation
+    if (options.verbose === false || !options.verbose) {
+      const sanMoves = safeStandardMoves.map(move => this._moveToSan(move, safeStandardMoves));
+      return [...sanMoves, ...safeJumpMoves.map(move => move.san)];
+    }
+
+    const prettyStandardMoves = safeStandardMoves.map(move => this._formatStandardMove(move, safeStandardMoves));
+    return [...prettyStandardMoves, ...safeJumpMoves];
+  }
+
+  /**
+   * Generate all pseudo-legal moves (no self-check filtering).
+   * Used for rider-check detection.
+   */
+  movesUnsafe(options = {}) {
+    const { square, piece } = options;
+    const standardMoves = this._moves({ legal: false, square, piece });
+    const jumpMoves = this.generateJumpMoves(options);
+
     if (options.verbose === false || !options.verbose) {
       const sanMoves = standardMoves.map(move => this._moveToSan(move, standardMoves));
       return [...sanMoves, ...jumpMoves.map(move => move.san)];
@@ -459,12 +481,25 @@ class KnightJumpChess extends Chess {
    * Make a move (override to handle jump moves)
    */
   move(move, options = {}) {
-    const standardMove = this.makeStandardMoveUnsafe(move, options);
-    if (standardMove) {
-      return standardMove;
+    if (typeof move === 'string') {
+      try {
+        return super.move(move, options);
+      } catch (e) {
+        return null;
+      }
     }
 
-    return this.makeJumpMove(move, options);
+    const moverColor = this.turn();
+    const moveObj = this._findStandardMove(move);
+    if (moveObj && this._isStandardMoveSafe(moveObj, moverColor)) {
+      return this._applyStandardMove(moveObj);
+    }
+
+    if (this._isJumpMoveSafe(move, moverColor)) {
+      return this.makeJumpMove(move, options);
+    }
+
+    return null;
   }
 
   /**
@@ -521,43 +556,41 @@ class KnightJumpChess extends Chess {
     return matchingMove;
   }
 
-  /**
-   * Make a standard move without enforcing self-check legality.
-   */
-  makeStandardMoveUnsafe(move, options = {}) {
-    if (!move) return null;
-
-    if (typeof move === 'string') {
-      try {
-        return super.move(move, options);
-      } catch (e) {
-        return null;
-      }
-    }
-
+  _findStandardMove(move) {
+    if (!move || typeof move !== 'object') return null;
     const moves = this._moves({ legal: false });
-    let moveObj = null;
-
     for (let i = 0, len = moves.length; i < len; i++) {
       if (
         move.from === this._algebraic(moves[i].from) &&
         move.to === this._algebraic(moves[i].to) &&
         (!('promotion' in moves[i]) || move.promotion === moves[i].promotion)
       ) {
-        moveObj = moves[i];
-        break;
+        return moves[i];
       }
     }
+    return null;
+  }
 
-    if (!moveObj) {
-      return null;
-    }
-
+  _applyStandardMove(moveObj) {
+    const moves = this._moves({ legal: false });
     const san = this._moveToSan(moveObj, moves);
     this._makeMove(moveObj);
     this._incPositionCount();
-
     return this._formatStandardMove(moveObj, moves, san);
+  }
+
+  _isStandardMoveSafe(moveObj, moverColor) {
+    const copy = new KnightJumpChess(this.fen());
+    copy._makeMove(moveObj);
+    copy._incPositionCount();
+    return !copy.isKingCapturable(moverColor);
+  }
+
+  _isJumpMoveSafe(move, moverColor) {
+    const copy = new KnightJumpChess(this.fen());
+    const result = copy.makeJumpMove(move);
+    if (!result) return false;
+    return !copy.isKingCapturable(moverColor);
   }
 
   _algebraic(squareIndex) {
@@ -576,6 +609,71 @@ class KnightJumpChess extends Chess {
       promotion: moveObj.promotion,
       san: sanOverride || this._moveToSan(moveObj, moves)
     };
+  }
+
+  /**
+   * Get king square for a color.
+   */
+  getKingSquare(color) {
+    const board = this.board();
+    for (let rank = 0; rank < 8; rank++) {
+      for (let file = 0; file < 8; file++) {
+        const piece = board[rank][file];
+        if (piece && piece.type === 'k' && piece.color === color) {
+          return String.fromCharCode(97 + file) + (8 - rank);
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if a king of a given color can be captured on the opponent's turn.
+   */
+  isKingCapturable(color) {
+    const kingSquare = this.getKingSquare(color);
+    if (!kingSquare) return true;
+
+    const opponent = color === 'w' ? 'b' : 'w';
+    const temp = new KnightJumpChess(this.fen());
+    temp._turn = opponent;
+    const opponentMoves = temp.movesUnsafe({ verbose: true });
+    return opponentMoves.some(move => move.to === kingSquare);
+  }
+
+  /**
+   * Rider rule: check is when your king can be captured.
+   */
+  isCheckRider() {
+    return this.isKingCapturable(this.turn());
+  }
+
+  /**
+   * Rider rule: checkmate if in check and no move removes capture threat.
+   */
+  isCheckmateRider() {
+    if (!this.isCheckRider()) return false;
+    const moverColor = this.turn();
+    const moves = this.moves({ verbose: true });
+    if (moves.length === 0) return true;
+
+    for (const move of moves) {
+      const copy = new KnightJumpChess(this.fen());
+      copy.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+      if (!copy.isKingCapturable(moverColor)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Rider rule: stalemate if not in check and no moves available.
+   */
+  isStalemateRider() {
+    if (this.isCheckRider()) return false;
+    const moves = this.moves({ verbose: true });
+    return moves.length === 0;
   }
 
   /**

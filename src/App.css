@@ -93,6 +93,18 @@
   backdrop-filter: blur(10px);
 }
 
+.check-alert {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 91, 91, 0.18);
+  border: 1px solid rgba(255, 91, 91, 0.5);
+  color: #ffd1c5;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 18px rgba(255, 91, 91, 0.12);
+}
+
 .board-header {
   display: flex;
   align-items: center;

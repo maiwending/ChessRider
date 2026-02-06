@@ -220,11 +220,11 @@ export default function App() {
           nextStatus = 'completed';
           winner = kingWinner;
           result = `${formatTurn(kingWinner)} wins by king capture`;
-        } else if (currentGame.isCheckmate()) {
+        } else if (currentGame.isCheckmateRider()) {
           nextStatus = 'completed';
           winner = currentGame.turn() === 'w' ? 'b' : 'w';
           result = `${formatTurn(winner)} wins by checkmate`;
-        } else if (currentGame.isStalemate()) {
+        } else if (currentGame.isStalemateRider()) {
           nextStatus = 'draw';
           result = 'Stalemate';
         }
@@ -482,11 +482,10 @@ export default function App() {
       if (kingWinner) {
         return `King captured. ${formatTurn(kingWinner)} wins.`;
       }
-      if (game.isCheckmate()) {
+      if (game.isCheckmateRider()) {
         return `Checkmate. ${formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins.`;
       }
-      if (game.isStalemate()) return 'Stalemate.';
-      if (game.isCheck()) return `Check. ${formatTurn(game.turn())} to move.`;
+      if (game.isStalemateRider()) return 'Stalemate.';
       return `${formatTurn(game.turn())} to move.`;
     }
     if (!gameData) return 'Loading game...';
@@ -540,6 +539,11 @@ export default function App() {
               </div>
             )}
           </div>
+          {game.isCheckRider() && !game.getWinnerByKingCapture() && (
+            <div className="check-alert">
+              Check! Your king can be captured.
+            </div>
+          )}
 
           <ChessBoard
             game={game}
