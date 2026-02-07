@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDoc,
   collection,
@@ -41,6 +41,11 @@ export default function App() {
   const [pieceStyle, setPieceStyle] = useState('svg');
   const [waitingGames, setWaitingGames] = useState([]);
   const [joinGameId, setJoinGameId] = useState('');
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const lastAiFenRef = useRef(null);
+  const aiRequestIdRef = useRef(0);
 
   const isOnline = Boolean(gameId);
 
@@ -129,6 +134,8 @@ export default function App() {
 
   const canInteract = useMemo(() => {
     if (movePending) return false;
+    const kingWinner = game.getWinnerByKingCapture?.();
+    if (kingWinner || game.isCheckmateRider?.() || game.isStalemateRider?.()) return false;
     if (!isOnline) return true;
     if (!gameData || gameData.status !== 'active') return false;
     return playerColor === game.turn();
@@ -173,16 +180,83 @@ export default function App() {
     }
   };
 
-  const makeLocalMove = (from, to) => {
+  const makeLocalMove = (from, to, promotion) => {
     const gameCopy = new KnightJumpChess(game.fen());
-    const moveResult = gameCopy.move({ from, to, promotion: 'q' });
+    const moveResult = gameCopy.move({ from, to, promotion: promotion || 'q' });
     if (moveResult) {
       setGame(gameCopy);
       setMoveHistory((prev) => [...prev, moveResult.san || `${from}-${to}`]);
       setSelectedSquare(null);
       setLegalMoves([]);
+      return true;
     }
+    return false;
   };
+
+  useEffect(() => {
+    if (!aiEnabled || isOnline) return;
+    if (aiThinking) return;
+    if (game.getWinnerByKingCapture?.() || game.isCheckmateRider?.() || game.isStalemateRider?.()) return;
+    if (game.turn() !== 'b') return;
+
+    const aiEndpoint = import.meta.env.VITE_AI_ENDPOINT || '';
+    const aiUrl = aiEndpoint ? `${aiEndpoint}/ai-move` : '/ai/ai-move';
+    const fen = game.fen();
+    if (lastAiFenRef.current === fen) return;
+    lastAiFenRef.current = fen;
+    setAiThinking(true);
+    setAiError('');
+
+    const requestId = ++aiRequestIdRef.current;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    fetch(aiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen, depth: 5, time: 2.0 }),
+      signal: controller.signal
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'AI error');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const uci = data.uci || '';
+        if (uci.length < 4) {
+          throw new Error('Invalid AI move');
+        }
+        const from = uci.slice(0, 2);
+        const to = uci.slice(2, 4);
+        const promotion = uci.length > 4 ? uci.slice(4, 5) : undefined;
+        if (requestId !== aiRequestIdRef.current) return;
+        const ok = makeLocalMove(from, to, promotion);
+        if (!ok) {
+          throw new Error(`AI move rejected: ${uci}`);
+        }
+        setAiError('');
+      })
+      .catch((error) => {
+        if (requestId !== aiRequestIdRef.current) return;
+        if (error?.name === 'AbortError') {
+          setAiError('AI request timed out.');
+          return;
+        }
+        setAiError(error?.message || 'AI move failed. Check server or rules.');
+      })
+      .finally(() => {
+        if (requestId !== aiRequestIdRef.current) return;
+        clearTimeout(timeout);
+        setAiThinking(false);
+      });
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [aiEnabled, aiThinking, game, isOnline]);
 
   const submitOnlineMove = async (from, to) => {
     if (!gameId || !user) return;
@@ -274,6 +348,8 @@ export default function App() {
     setMoveHistory([]);
     setSelectedSquare(null);
     setLegalMoves([]);
+    setAiThinking(false);
+    setAiError('');
   };
 
   const startMatchmaking = async () => {
@@ -539,7 +615,22 @@ export default function App() {
               </div>
             )}
           </div>
-          {game.isCheckRider() && !game.getWinnerByKingCapture() && (
+          {game.getWinnerByKingCapture() && (
+            <div className="victory-banner">
+              King captured. {formatTurn(game.getWinnerByKingCapture())} wins.
+            </div>
+          )}
+          {!game.getWinnerByKingCapture() && game.isCheckmateRider() && (
+            <div className="victory-banner">
+              Checkmate. {formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins.
+            </div>
+          )}
+          {!game.getWinnerByKingCapture() && game.isStalemateRider() && (
+            <div className="victory-banner">
+              Stalemate. Draw.
+            </div>
+          )}
+          {game.isCheckRider() && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
             <div className="check-alert">
               Check! Your king can be captured.
             </div>
@@ -595,7 +686,18 @@ export default function App() {
                 )}
               </>
             ) : (
-              <button className="btn btn-primary" onClick={startMatchmaking}>Find Match</button>
+              <>
+                <button className="btn btn-primary" onClick={startMatchmaking}>Find Match</button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setAiEnabled(true);
+                    resetPractice();
+                  }}
+                >
+                  Play with AI
+                </button>
+              </>
             )}
           </div>
 
@@ -653,6 +755,15 @@ export default function App() {
           <div className="panel">
             <h3>Controls</h3>
             <button className="btn btn-ghost" onClick={resetPractice} disabled={isOnline}>New Practice Game</button>
+            {aiEnabled && !isOnline && (
+              <p className="muted">AI opponent: bot_ab.py (server-side).</p>
+            )}
+            {aiEnabled && aiThinking && (
+              <p className="muted">AI thinking...</p>
+            )}
+            {aiEnabled && aiError && (
+              <p className="error-text">{aiError}</p>
+            )}
             <div className="theme-select">
               <label htmlFor="theme-choice" className="muted">Board style</label>
               <select
@@ -716,3 +827,5 @@ export default function App() {
     </div>
   );
 }
+
+
