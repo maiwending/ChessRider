@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   onAuthStateChanged,
-  signInAnonymously,
+  signInAnonymously as firebaseSignInAnonymously,
   signInWithPopup,
-  signOut
+  signOut as firebaseSignOut
 } from 'firebase/auth';
 import {
   doc,
@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   setDoc
 } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../utils/firebase.js';
+import { auth, db, firebaseEnabled, googleProvider } from '../utils/firebase.js';
 
 const AuthContext = createContext(null);
 
@@ -30,6 +30,12 @@ export function AuthProvider({ children }) {
   const [profileReady, setProfileReady] = useState(false);
 
   useEffect(() => {
+    if (!firebaseEnabled || !auth) {
+      setAuthReady(true);
+      setProfileReady(true);
+      return undefined;
+    }
+
     const unsub = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       setAuthReady(true);
@@ -38,41 +44,55 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (!firebaseEnabled || !db) {
+      setProfile(null);
+      setProfileReady(true);
+      return undefined;
+    }
+
     let unsubscribe = null;
     let active = true;
 
     const setupProfile = async () => {
       if (!user) {
         setProfile(null);
-        setProfileReady(false);
+        setProfileReady(true);
         return;
       }
 
-      const profileRef = doc(db, 'users', user.uid);
-      const baseProfile = {
-        displayName: getDisplayName(user),
-        rating: 1200,
-        isAnonymous: user.isAnonymous,
-        updatedAt: serverTimestamp()
-      };
+      try {
+        const profileRef = doc(db, 'users', user.uid);
+        const baseProfile = {
+          displayName: getDisplayName(user),
+          rating: 1200,
+          isAnonymous: user.isAnonymous,
+          updatedAt: serverTimestamp()
+        };
 
-      const snap = await getDoc(profileRef);
-      if (!snap.exists()) {
-        await setDoc(profileRef, { ...baseProfile, createdAt: serverTimestamp() });
-      } else {
-        await setDoc(profileRef, baseProfile, { merge: true });
-      }
+        const snap = await getDoc(profileRef);
+        if (!snap.exists()) {
+          await setDoc(profileRef, { ...baseProfile, createdAt: serverTimestamp() });
+        } else {
+          await setDoc(profileRef, baseProfile, { merge: true });
+        }
 
-      if (!active) return;
-      unsubscribe = onSnapshot(profileRef, (docSnap) => {
-        if (!docSnap.exists()) {
+        if (!active) return;
+        unsubscribe = onSnapshot(profileRef, (docSnap) => {
+          if (!docSnap.exists()) {
+            setProfile(null);
+            setProfileReady(true);
+            return;
+          }
+          setProfile({ id: docSnap.id, ...docSnap.data() });
+          setProfileReady(true);
+        });
+      } catch (error) {
+        console.warn('Auth profile setup failed:', error?.message || error);
+        if (active) {
           setProfile(null);
           setProfileReady(true);
-          return;
         }
-        setProfile({ id: docSnap.id, ...docSnap.data() });
-        setProfileReady(true);
-      });
+      }
     };
 
     setupProfile();
@@ -83,6 +103,9 @@ export function AuthProvider({ children }) {
     };
   }, [user]);
 
+  const firebaseNotReadyError = () =>
+    Promise.reject(new Error('Firebase is not configured. Set VITE_FIREBASE_* env vars.'));
+
   const value = useMemo(() => {
     return {
       user,
@@ -91,9 +114,18 @@ export function AuthProvider({ children }) {
       profileReady,
       rating: profile?.rating ?? 1200,
       displayName: getDisplayName(user),
-      signInWithGoogle: () => signInWithPopup(auth, googleProvider),
-      signInAnonymously: () => signInAnonymously(auth),
-      signOut: () => signOut(auth)
+      signInWithGoogle: () => {
+        if (!firebaseEnabled || !auth || !googleProvider) return firebaseNotReadyError();
+        return signInWithPopup(auth, googleProvider);
+      },
+      signInAnonymously: () => {
+        if (!firebaseEnabled || !auth) return firebaseNotReadyError();
+        return firebaseSignInAnonymously(auth);
+      },
+      signOut: () => {
+        if (!firebaseEnabled || !auth) return Promise.resolve();
+        return firebaseSignOut(auth);
+      }
     };
   }, [user, authReady, profile, profileReady]);
 

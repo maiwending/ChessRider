@@ -322,6 +322,15 @@ def evaluate(position: ChessRiderPosition) -> int:
     return score
 
 
+def evaluate_for_side_to_move(position: ChessRiderPosition) -> int:
+    """
+    Return evaluation from the perspective of the side to move.
+    This is required for correct negamax scoring.
+    """
+    score = evaluate(position)
+    return score if position.board.turn == chess.WHITE else -score
+
+
 def order_moves(position: ChessRiderPosition, moves: List[MoveLike]) -> List[MoveLike]:
     scored = []
     for move in moves:
@@ -348,8 +357,8 @@ def order_moves(position: ChessRiderPosition, moves: List[MoveLike]) -> List[Mov
 
 def quiescence(position: ChessRiderPosition, alpha: int, beta: int, deadline: Optional[float]) -> int:
     if deadline and time.time() > deadline:
-        return evaluate(position)
-    stand_pat = evaluate(position)
+        return evaluate_for_side_to_move(position)
+    stand_pat = evaluate_for_side_to_move(position)
     if stand_pat >= beta:
         return beta
     if alpha < stand_pat:
@@ -379,13 +388,13 @@ def is_capture(position: ChessRiderPosition, move: MoveLike) -> bool:
 
 def alphabeta(position: ChessRiderPosition, depth: int, alpha: int, beta: int, use_quiescence: bool, deadline: Optional[float]) -> int:
     if deadline and time.time() > deadline:
-        return evaluate(position)
+        return evaluate_for_side_to_move(position)
     winner = position.winner_by_king_capture()
     if winner is not None:
-        return 100000 if winner == chess.WHITE else -100000
+        return 100000 if winner == position.board.turn else -100000
 
     if depth == 0:
-        return quiescence(position, alpha, beta, deadline) if use_quiescence else evaluate(position)
+        return quiescence(position, alpha, beta, deadline) if use_quiescence else evaluate_for_side_to_move(position)
 
     moves = position.legal_moves()
     if not moves:
@@ -421,6 +430,12 @@ def find_best_move(fen: str, depth: int = 4, time_limit: Optional[float] = None,
         current_score = -math.inf
         for move in moves:
             if deadline and time.time() > deadline:
+                # On timeout during a depth iteration, return the last fully
+                # completed depth result (iterative deepening best practice).
+                if best_move is not None:
+                    return best_move, best_score
+                if current_best is not None:
+                    return current_best, current_score
                 return best_move, best_score
             child = position.copy()
             child.push(move)

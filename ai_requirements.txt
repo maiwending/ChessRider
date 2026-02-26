@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+"""
+ChessRider AI Engine - Requirements
+
+Install with: pip install -r ai_requirements.txt
+"""
+
+# Core Dependencies
+python-chess>=1.10.0        # Chess move generation and validation
+fastapi>=0.100.0            # REST API framework
+uvicorn>=0.23.0             # ASGI server
+pydantic>=2.0.0             # Data validation
+
+# Optional but Recommended
+python-dotenv>=1.0.0        # Environment variable management
+pytest>=7.0.0               # Testing framework
+
+# For Production Deployment
+gunicorn>=21.0.0            # Production WSGI server (for Uvicorn)
+
+# Development Tools (optional)
+black>=23.0.0               # Code formatting
+flake8>=6.0.0               # Linting
+mypy>=1.0.0                 # Type checking

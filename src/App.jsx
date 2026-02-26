@@ -16,7 +16,7 @@ import {
 import KnightJumpChess from './KnightJumpChess.js';
 import ChessBoard from './components/ChessBoard.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
-import { db } from './utils/firebase.js';
+import { db, firebaseEnabled } from './utils/firebase.js';
 import './App.css';
 
 const GAMES_COLLECTION = 'games';
@@ -46,6 +46,20 @@ export default function App() {
   const [aiError, setAiError] = useState('');
   const lastAiFenRef = useRef(null);
   const aiRequestIdRef = useRef(0);
+  const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'expert').toLowerCase();
+  const aiDifficulty = ['easy', 'medium', 'hard', 'expert'].includes(rawAiDifficulty)
+    ? rawAiDifficulty
+    : 'expert';
+  const aiDepthRaw = Number(import.meta.env.VITE_AI_DEPTH);
+  const aiTimeRaw = Number(import.meta.env.VITE_AI_TIME);
+  const aiDepth = Number.isFinite(aiDepthRaw) && aiDepthRaw > 0 ? Math.floor(aiDepthRaw) : undefined;
+  const aiTime = Number.isFinite(aiTimeRaw) && aiTimeRaw > 0 ? aiTimeRaw : undefined;
+  const defaultAiTimeByDifficulty = {
+    easy: 0.5,
+    medium: 2.0,
+    hard: 6.0,
+    expert: 10.0
+  };
 
   const isOnline = Boolean(gameId);
 
@@ -209,12 +223,18 @@ export default function App() {
 
     const requestId = ++aiRequestIdRef.current;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const expectedAiSeconds = aiTime ?? defaultAiTimeByDifficulty[aiDifficulty] ?? 10.0;
+    const requestTimeoutMs = Math.max(8000, Math.ceil(expectedAiSeconds * 1000) + 2500);
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+
+    const aiPayload = { fen, difficulty: aiDifficulty };
+    if (aiDepth) aiPayload.depth = aiDepth;
+    if (aiTime) aiPayload.time = aiTime;
 
     fetch(aiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fen, depth: 5, time: 2.0 }),
+      body: JSON.stringify(aiPayload),
       signal: controller.signal
     })
       .then(async (res) => {
@@ -256,7 +276,7 @@ export default function App() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [aiEnabled, aiThinking, game, isOnline]);
+  }, [aiDepth, aiDifficulty, aiEnabled, aiThinking, aiTime, game, isOnline]);
 
   const submitOnlineMove = async (from, to) => {
     if (!gameId || !user) return;
@@ -584,6 +604,8 @@ export default function App() {
         <div className="auth-panel">
           {!authReady ? (
             <span className="auth-status">Connecting...</span>
+          ) : !firebaseEnabled ? (
+            <span className="auth-status">Local mode (Firebase not configured).</span>
           ) : user ? (
             <>
               <div className="auth-user">
@@ -651,9 +673,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="panel">
             <h3>Matchmaking</h3>
-            {!user ? (
-              <p className="muted">Sign in to find an online match.</p>
-            ) : isOnline ? (
+            {isOnline ? (
               <>
                 <p className="match-state">
                   Status: <strong>{gameData?.status || matchStatus}</strong>
@@ -687,7 +707,15 @@ export default function App() {
               </>
             ) : (
               <>
-                <button className="btn btn-primary" onClick={startMatchmaking}>Find Match</button>
+                {user ? (
+                  <button className="btn btn-primary" onClick={startMatchmaking}>Find Match</button>
+                ) : (
+                  <p className="muted">
+                    {firebaseEnabled
+                      ? 'Sign in to find an online match.'
+                      : 'Local mode: online matchmaking is disabled.'}
+                  </p>
+                )}
                 <button
                   className="btn btn-ghost"
                   onClick={() => {
@@ -756,7 +784,7 @@ export default function App() {
             <h3>Controls</h3>
             <button className="btn btn-ghost" onClick={resetPractice} disabled={isOnline}>New Practice Game</button>
             {aiEnabled && !isOnline && (
-              <p className="muted">AI opponent: bot_ab.py (server-side).</p>
+              <p className="muted">AI opponent: bot_engine.py ({aiDifficulty.toUpperCase()}).</p>
             )}
             {aiEnabled && aiThinking && (
               <p className="muted">AI thinking...</p>
