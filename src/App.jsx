@@ -18,9 +18,6 @@ import KnightJumpChess from './KnightJumpChess.js';
 import ChessBoard from './components/ChessBoard.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { db, firebaseEnabled } from './utils/firebase.js';
-import ruleZoneImage from './assets/manual/rule-zone.svg';
-import ruleJumpImage from './assets/manual/rule-jump.svg';
-import ruleBlockImage from './assets/manual/rule-one-block.svg';
 import './App.css';
 
 const GAMES_COLLECTION = 'games';
@@ -37,25 +34,55 @@ const formatTime = (seconds) => {
   return `${mins}:${secs.padStart(4, '0')}`;
 };
 
-const manualCards = [
+const LEARN_STEPS = [
   {
-    title: '1. Stay Near Your Knight',
-    image: ruleZoneImage,
-    alt: 'Knight influence zone showing adjacent and knight-jump range squares.',
-    body: 'A piece gains jump power if it is adjacent to a friendly knight or on a knight-move square from it.'
+    title: 'The Knight Aura',
+    subtitle: 'Proximity is power',
+    description: 'Any friendly piece adjacent to a knight — or reachable by a knight\'s L-shaped move — gains the ability to jump.',
+    board: [
+      ['','','','','',''],
+      ['','','♞','','',''],
+      ['','✦','','✦','',''],
+      ['✦','','','','✦',''],
+      ['','','','','',''],
+    ],
+    highlight: 'green',
+    caption: '✦ = squares in the Knight\'s aura zone',
   },
   {
-    title: '2. Jump Exactly One Blocker',
-    image: ruleJumpImage,
-    alt: 'Rook jumping one blocking piece and landing farther on the same line.',
-    body: 'Sliding pieces can jump one blocker, then keep moving along the same line and may capture after the jump.'
+    title: 'Jump One Blocker',
+    subtitle: 'Leap over a single piece',
+    description: 'A piece in the knight\'s aura can jump over exactly one blocking piece along its normal move path, then keep sliding.',
+    board: [
+      ['♖','','♟','','','♝'],
+      ['','','','','',''],
+    ],
+    highlight: 'blue',
+    caption: '♖ jumps over ♟ and can land on any square beyond — or capture ♝',
   },
   {
-    title: '3. Second Blocker Stops You',
-    image: ruleBlockImage,
-    alt: 'Example where a second blocker prevents further travel after the jump.',
-    body: 'You cannot jump twice in one move. After your one jump, the next piece on that line blocks you.'
-  }
+    title: 'Second Blocker Stops',
+    subtitle: 'Only one jump per move',
+    description: 'After jumping one piece, the next piece on that line blocks you. You cannot jump twice in a single move.',
+    board: [
+      ['♕','','♟','','♜','',''],
+      ['','','','','','',''],
+    ],
+    highlight: 'red',
+    caption: '♕ jumps ♟ but ♜ blocks further travel. Cannot land past ♜.',
+  },
+  {
+    title: 'Pawns & Kings',
+    subtitle: 'Short-range jumps too',
+    description: 'Pawns near a knight can jump one square forward over a blocker. Kings can jump one square in any direction when blocked.',
+    board: [
+      ['','♟','',''],
+      ['♙','','',''],
+      ['♞','','',''],
+    ],
+    highlight: 'green',
+    caption: '♙ can jump over ♟ — powered by ♞ below',
+  },
 ];
 
 export default function App() {
@@ -916,18 +943,19 @@ export default function App() {
         <div className="sidebar">
           <nav className="tab-navigation">
             {[
-              { key: 'play', label: 'Play' },
-              { key: 'moves', label: 'Moves' },
-              { key: 'games', label: 'Games' },
-              { key: 'settings', label: 'Settings' },
-              { key: 'learn', label: 'Learn' }
+              { key: 'play', icon: '▶', label: 'Play' },
+              { key: 'moves', icon: '☰', label: 'Moves' },
+              { key: 'games', icon: '⚔', label: 'Games' },
+              { key: 'settings', icon: '⚙', label: 'Settings' },
+              { key: 'learn', icon: '📖', label: 'Learn' }
             ].map((tab) => (
               <button
                 key={tab.key}
                 className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.key)}
               >
-                {tab.label}
+                <span className="tab-icon">{tab.icon}</span>
+                <span className="tab-label">{tab.label}</span>
               </button>
             ))}
           </nav>
@@ -1136,37 +1164,43 @@ export default function App() {
 
             {/* ── Learn Tab ── */}
             {activeTab === 'learn' && (
-              <div className="tab-panel">
-                <h3>How to Play</h3>
-                <p className="manual-intro">
-                  KNightAuraChess keeps standard chess movement, but pieces near friendly knights can jump over one blocker.
-                </p>
-                <div className="manual-grid">
-                  {manualCards.map((card) => (
-                    <article key={card.title} className="manual-card">
-                      <img src={card.image} alt={card.alt} className="manual-image" />
-                      <h4>{card.title}</h4>
-                      <p className="muted">{card.body}</p>
-                    </article>
+              <div className="tab-panel learn-panel">
+                <div className="learn-header">
+                  <h3>How to Play</h3>
+                  <p className="learn-subtitle">KNightAuraChess — standard chess with knight-powered jumping</p>
+                </div>
+
+                <div className="learn-steps">
+                  {LEARN_STEPS.map((step, idx) => (
+                    <div key={idx} className={`learn-step learn-step--${step.highlight}`}>
+                      <div className="learn-step-number">{idx + 1}</div>
+                      <div className="learn-step-content">
+                        <h4>{step.title}</h4>
+                        <span className="learn-step-subtitle">{step.subtitle}</span>
+                        <p>{step.description}</p>
+                        <div className="learn-mini-board">
+                          {step.board.map((row, ri) => (
+                            <div key={ri} className="learn-mini-row">
+                              {row.map((cell, ci) => (
+                                <div key={ci} className={`learn-mini-cell ${
+                                  cell === '✦' ? 'learn-cell--aura' :
+                                  cell && cell !== '' ? 'learn-cell--piece' : ''
+                                }`}>
+                                  {cell === '✦' ? '✦' : cell}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="learn-caption">{step.caption}</p>
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <div className="manual-gif" role="img" aria-label="Animated example of a rook jumping one blocker.">
-                  <div className="manual-gif-track">
-                    <div className="manual-square manual-square--from">R</div>
-                    <div className="manual-square manual-square--blocked">P</div>
-                    <div className="manual-square" />
-                    <div className="manual-square manual-square--target">x</div>
-                    <div className="manual-jumper">R</div>
-                  </div>
-                  <p className="muted" style={{ marginTop: 6 }}>One jump over a blocker, then land on a legal square.</p>
+
+                <div className="learn-footer">
+                  <p>Combine classic chess tactics with jump mechanics for deeper, more dynamic strategy!</p>
                 </div>
-                <hr className="divider" />
-                <h4>About the Variant</h4>
-                <p className="muted">
-                  Pieces adjacent to or a knight's move away from a friendly knight can jump over one
-                  blocking piece and continue along their normal path. Combine classic tactics
-                  with jump mechanics for deeper strategy.
-                </p>
               </div>
             )}
           </div>
