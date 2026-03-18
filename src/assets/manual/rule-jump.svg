@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 220" role="img" aria-labelledby="title desc">
+  <title id="title">Jump One Blocker</title>
+  <desc id="desc">A rook jumps one blocking piece and can continue on the same line.</desc>
+  <rect x="0" y="0" width="360" height="220" rx="14" fill="#17120e"/>
+  <g transform="translate(24,44)">
+    <rect x="0" y="0" width="312" height="132" rx="10" fill="#2a2018" stroke="#6f5942" stroke-width="2"/>
+    <g>
+      <rect x="16" y="40" width="42" height="42" rx="6" fill="#3d2f22"/>
+      <rect x="64" y="40" width="42" height="42" rx="6" fill="#594331"/>
+      <rect x="112" y="40" width="42" height="42" rx="6" fill="#3d2f22"/>
+      <rect x="160" y="40" width="42" height="42" rx="6" fill="#594331"/>
+      <rect x="208" y="40" width="42" height="42" rx="6" fill="#3d2f22"/>
+      <rect x="256" y="40" width="42" height="42" rx="6" fill="#594331"/>
+    </g>
+    <rect x="16" y="40" width="42" height="42" rx="6" fill="#e88c3a" opacity="0.9"/>
+    <text x="37" y="66" text-anchor="middle" fill="#1a120b" font-size="22" font-family="Arial" font-weight="700">R</text>
+    <rect x="112" y="40" width="42" height="42" rx="6" fill="#d05b4e" opacity="0.92"/>
+    <text x="133" y="66" text-anchor="middle" fill="#1a120b" font-size="20" font-family="Arial" font-weight="700">P</text>
+    <rect x="208" y="40" width="42" height="42" rx="6" fill="#6cb787" opacity="0.8"/>
+    <rect x="256" y="40" width="42" height="42" rx="6" fill="#6cb787" opacity="0.8"/>
+    <path d="M 42 35 C 105 6, 190 6, 272 35" fill="none" stroke="#f5c28b" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="272,35 258,29 262,42" fill="#f5c28b"/>
+    <text x="156" y="112" text-anchor="middle" fill="#f6eee2" font-size="13" font-family="Arial">Jump over one blocker, then keep sliding</text>
+  </g>
+</svg>

@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AiWorker from './workers/aiWorker.js?worker';
 import {
   addDoc,
   collection,
@@ -17,14 +18,45 @@ import KnightJumpChess from './KnightJumpChess.js';
 import ChessBoard from './components/ChessBoard.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { db, firebaseEnabled } from './utils/firebase.js';
+import ruleZoneImage from './assets/manual/rule-zone.svg';
+import ruleJumpImage from './assets/manual/rule-jump.svg';
+import ruleBlockImage from './assets/manual/rule-one-block.svg';
 import './App.css';
 
 const GAMES_COLLECTION = 'games';
 const RULE_ID = 'chessrider';
+const AI_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard', 'expert'];
 
 const createNewGame = () => new KnightJumpChess();
 
 const formatTurn = (turn) => (turn === 'w' ? 'White' : 'Black');
+
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = (seconds % 60).toFixed(1);
+  return `${mins}:${secs.padStart(4, '0')}`;
+};
+
+const manualCards = [
+  {
+    title: '1. Stay Near Your Knight',
+    image: ruleZoneImage,
+    alt: 'Knight influence zone showing adjacent and knight-jump range squares.',
+    body: 'A piece gains jump power if it is adjacent to a friendly knight or on a knight-move square from it.'
+  },
+  {
+    title: '2. Jump Exactly One Blocker',
+    image: ruleJumpImage,
+    alt: 'Rook jumping one blocking piece and landing farther on the same line.',
+    body: 'Sliding pieces can jump one blocker, then keep moving along the same line and may capture after the jump.'
+  },
+  {
+    title: '3. Second Blocker Stops You',
+    image: ruleBlockImage,
+    alt: 'Example where a second blocker prevents further travel after the jump.',
+    body: 'You cannot jump twice in one move. After your one jump, the next piece on that line blocks you.'
+  }
+];
 
 export default function App() {
   const { user, authReady, displayName, rating, signInWithGoogle, signInAnonymously, signOut } = useAuth();
@@ -32,6 +64,8 @@ export default function App() {
   const [moveHistory, setMoveHistory] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
+  const [lastMove, setLastMove] = useState(null);
+  const [flipped, setFlipped] = useState(false);
   const [gameId, setGameId] = useState(null);
   const [gameData, setGameData] = useState(null);
   const [matchStatus, setMatchStatus] = useState('idle');
@@ -44,22 +78,17 @@ export default function App() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [activeTab, setActiveTab] = useState('play');
+  const [moveTimestamps, setMoveTimestamps] = useState([{ white: 0, black: 0 }]);
+  const [currentMoveStartTime, setCurrentMoveStartTime] = useState(Date.now());
   const lastAiFenRef = useRef(null);
   const aiRequestIdRef = useRef(0);
-  const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'expert').toLowerCase();
-  const aiDifficulty = ['easy', 'medium', 'hard', 'expert'].includes(rawAiDifficulty)
+  const aiWorkerRef = useRef(null);
+  const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'medium').toLowerCase();
+  const envAiDifficulty = AI_DIFFICULTY_LEVELS.includes(rawAiDifficulty)
     ? rawAiDifficulty
-    : 'expert';
-  const aiDepthRaw = Number(import.meta.env.VITE_AI_DEPTH);
-  const aiTimeRaw = Number(import.meta.env.VITE_AI_TIME);
-  const aiDepth = Number.isFinite(aiDepthRaw) && aiDepthRaw > 0 ? Math.floor(aiDepthRaw) : undefined;
-  const aiTime = Number.isFinite(aiTimeRaw) && aiTimeRaw > 0 ? aiTimeRaw : undefined;
-  const defaultAiTimeByDifficulty = {
-    easy: 0.5,
-    medium: 2.0,
-    hard: 6.0,
-    expert: 10.0
-  };
+    : 'medium';
+  const [aiDifficulty, setAiDifficulty] = useState(envAiDifficulty);
 
   const isOnline = Boolean(gameId);
 
@@ -72,7 +101,7 @@ export default function App() {
 
   const opponentName = useMemo(() => {
     if (!gameData) return 'Opponent';
-    if (playerColor === 'w') return gameData.blackName || 'Waiting opponent';
+    if (playerColor === 'w') return gameData.blackName || 'Waiting...';
     if (playerColor === 'b') return gameData.whiteName || 'Opponent';
     return 'Opponent';
   }, [gameData, playerColor]);
@@ -84,6 +113,15 @@ export default function App() {
     return { self: selfReady, opponent: opponentReady };
   }, [gameData, playerColor]);
 
+  const inCheck = useMemo(() => {
+    try {
+      return game?.isCheckRider?.() || false;
+    } catch {
+      return false;
+    }
+  }, [game]);
+
+  // ── Firebase listeners ──
   useEffect(() => {
     if (!gameId) return undefined;
     const gameRef = doc(db, GAMES_COLLECTION, gameId);
@@ -98,6 +136,9 @@ export default function App() {
       setGameData(data);
       if (data.fen) {
         setGame(new KnightJumpChess(data.fen));
+      }
+      if (data.lastMove) {
+        setLastMove({ from: data.lastMove.from, to: data.lastMove.to });
       }
       setMoveHistory(data.moveHistory || []);
       setSelectedSquare(null);
@@ -128,35 +169,126 @@ export default function App() {
       where('rule', '==', RULE_ID),
       limit(20)
     );
-    const unsub = onSnapshot(waitingQuery, (snap) => {
-      const rows = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.whiteId !== user.uid) {
-          rows.push({
-            id: docSnap.id,
-            host: data.whiteName || 'Host',
-            hostRating: data.whiteRating ?? 1200,
-            createdAt: data.createdAt?.toDate?.() || null
-          });
-        }
-      });
-      setWaitingGames(rows);
+    const unsub = onSnapshot(waitingQuery, (snapshot) => {
+      const games = snapshot.docs
+        .map((docSnap) => ({
+          id: docSnap.id,
+          host: docSnap.data().whiteName || 'Anonymous',
+          createdAt: docSnap.data().createdAt?.toDate?.() || null,
+        }))
+        .filter((g) => g.id !== gameId)
+        .sort((a, b) => (b.createdAt - a.createdAt));
+      setWaitingGames(games);
     });
     return () => unsub();
-  }, [gameId, user]);
+  }, [user, gameId]);
 
-  const canInteract = useMemo(() => {
-    if (movePending) return false;
-    const kingWinner = game.getWinnerByKingCapture?.();
-    if (kingWinner || game.isCheckmateRider?.() || game.isStalemateRider?.()) return false;
-    if (!isOnline) return true;
-    if (!gameData || gameData.status !== 'active') return false;
-    return playerColor === game.turn();
-  }, [game, gameData, isOnline, movePending, playerColor]);
+  // ── AI Web Worker lifecycle ──
+  useEffect(() => {
+    const worker = new AiWorker();
+    aiWorkerRef.current = worker;
+
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'result') {
+        // Apply the AI move
+        setGame((prevGame) => {
+          const gameCopy = new KnightJumpChess(prevGame.fen());
+          const aiMoveObj = gameCopy
+            .moves({ verbose: true })
+            .find((m) => m.from === msg.from && m.to === msg.to &&
+              (!msg.promotion || m.promotion === msg.promotion));
+
+          if (aiMoveObj) {
+            gameCopy.move(aiMoveObj);
+          } else {
+            // Fallback: try direct move
+            const result = gameCopy.move({ from: msg.from, to: msg.to, promotion: msg.promotion || 'q' });
+            if (!result) {
+              console.error('AI returned invalid move:', msg);
+              setAiError(`AI returned invalid move: ${msg.from}${msg.to}`);
+              setAiThinking(false);
+              return prevGame;
+            }
+          }
+
+          setMoveHistory((prev) => [...prev, msg.san || `${msg.from}${msg.to}`]);
+          setLastMove({ from: msg.from, to: msg.to });
+
+          // Track AI move time
+          const aiMoveTime = (msg.timeMs || 0) / 1000;
+          setMoveTimestamps((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last) last.black += aiMoveTime;
+            return updated;
+          });
+          setCurrentMoveStartTime(Date.now());
+
+          return new KnightJumpChess(gameCopy.fen());
+        });
+        setAiThinking(false);
+      } else if (msg.type === 'error') {
+        console.error('AI worker error:', msg.message);
+        setAiError(msg.message);
+        setAiThinking(false);
+      }
+    };
+
+    worker.onerror = (err) => {
+      console.error('AI worker crashed:', err);
+      setAiError('AI engine crashed');
+      setAiThinking(false);
+    };
+
+    return () => {
+      worker.terminate();
+      aiWorkerRef.current = null;
+    };
+  }, []);
+
+  const requestAiMove = useCallback((fen, _history, _timestamps) => {
+    if (!aiWorkerRef.current) return;
+    setAiThinking(true);
+    setAiError('');
+    const requestId = ++aiRequestIdRef.current;
+    lastAiFenRef.current = fen;
+    aiWorkerRef.current.postMessage({
+      type: 'search',
+      fen,
+      difficulty: aiDifficulty,
+      id: requestId,
+    });
+  }, [aiDifficulty]);
+
+  // ── Game actions ──
+  const resetPractice = () => {
+    const newGame = createNewGame();
+    setGame(newGame);
+    setMoveHistory([]);
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setLastMove(null);
+    setMoveTimestamps([{ white: 0, black: 0 }]);
+    setCurrentMoveStartTime(Date.now());
+  };
 
   const handleSquareClick = (square) => {
-    if (!canInteract) return;
+    if (isOnline && playerColor !== game.turn()) {
+      return;
+    }
+
+    if (selectedSquare === null) {
+      const piecesOnSquare = game.get(square);
+      if (piecesOnSquare && piecesOnSquare.color === game.turn()) {
+        setSelectedSquare(square);
+        const moves = game
+          .moves({ square, verbose: true })
+          .map((m) => m.to);
+        setLegalMoves(moves);
+      }
+      return;
+    }
 
     if (selectedSquare === square) {
       setSelectedSquare(null);
@@ -164,212 +296,181 @@ export default function App() {
       return;
     }
 
-    const piece = game.get(square);
-
-    if (!selectedSquare) {
-      if (piece && piece.color === game.turn()) {
-        setSelectedSquare(square);
-        const moves = game.moves({
-          square,
-          verbose: true
-        });
-        setLegalMoves(moves.map((move) => move.to));
-      }
-      return;
-    }
-
     if (legalMoves.includes(square)) {
-      if (isOnline) {
-        submitOnlineMove(selectedSquare, square);
-      } else {
-        makeLocalMove(selectedSquare, square);
-      }
-    } else if (piece && piece.color === game.turn()) {
-      setSelectedSquare(square);
-      const moves = game.moves({
-        square,
-        verbose: true
-      });
-      setLegalMoves(moves.map((move) => move.to));
-    }
-  };
+      const moveObj = game
+        .moves({ square: selectedSquare, verbose: true })
+        .find((m) => m.to === square);
 
-  const makeLocalMove = (from, to, promotion) => {
-    const gameCopy = new KnightJumpChess(game.fen());
-    const moveResult = gameCopy.move({ from, to, promotion: promotion || 'q' });
-    if (moveResult) {
-      setGame(gameCopy);
-      setMoveHistory((prev) => [...prev, moveResult.san || `${from}-${to}`]);
+      if (!moveObj) {
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        return;
+      }
+
+      if (isOnline && gameId) {
+        handleOnlineMove(moveObj);
+      } else {
+        handleLocalMove(moveObj);
+      }
+
       setSelectedSquare(null);
       setLegalMoves([]);
-      return true;
+    } else {
+      const piecesOnSquare = game.get(square);
+      if (piecesOnSquare && piecesOnSquare.color === game.turn()) {
+        setSelectedSquare(square);
+        const moves = game
+          .moves({ square, verbose: true })
+          .map((m) => m.to);
+        setLegalMoves(moves);
+      } else {
+        setSelectedSquare(null);
+        setLegalMoves([]);
+      }
     }
-    return false;
   };
 
-  useEffect(() => {
-    if (!aiEnabled || isOnline) return;
-    if (aiThinking) return;
-    if (game.getWinnerByKingCapture?.() || game.isCheckmateRider?.() || game.isStalemateRider?.()) return;
-    if (game.turn() !== 'b') return;
+  const handleLocalMove = async (moveObj) => {
+    const gameCopy = new KnightJumpChess(game.fen());
+    gameCopy.move(moveObj);
+    setGame(gameCopy);
+    const newHistory = [...moveHistory, moveObj.san];
+    setMoveHistory(newHistory);
+    setLastMove({ from: moveObj.from, to: moveObj.to });
 
-    const aiEndpoint = import.meta.env.VITE_AI_ENDPOINT || '';
-    const aiUrl = aiEndpoint ? `${aiEndpoint}/ai-move` : '/ai/ai-move';
-    const fen = game.fen();
-    if (lastAiFenRef.current === fen) return;
-    lastAiFenRef.current = fen;
-    setAiThinking(true);
-    setAiError('');
+    // Track move time
+    const moveEndTime = Date.now();
+    const moveTime = (moveEndTime - currentMoveStartTime) / 1000;
+    const currentTurn = game.turn();
+    
+    const newTimestamps = [...moveTimestamps];
+    const lastTimestamp = newTimestamps[newTimestamps.length - 1];
+    if (currentTurn === 'w') {
+      lastTimestamp.white += moveTime;
+    } else {
+      lastTimestamp.black += moveTime;
+    }
+    setMoveTimestamps(newTimestamps);
+    setCurrentMoveStartTime(moveEndTime);
 
-    const requestId = ++aiRequestIdRef.current;
-    const controller = new AbortController();
-    const expectedAiSeconds = aiTime ?? defaultAiTimeByDifficulty[aiDifficulty] ?? 10.0;
-    const requestTimeoutMs = Math.max(8000, Math.ceil(expectedAiSeconds * 1000) + 2500);
-    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    if (aiEnabled && !isOnline) {
+      requestAiMove(gameCopy.fen(), newHistory, newTimestamps);
+    }
+  };
 
-    const aiPayload = { fen, difficulty: aiDifficulty };
-    if (aiDepth) aiPayload.depth = aiDepth;
-    if (aiTime) aiPayload.time = aiTime;
-
-    fetch(aiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(aiPayload),
-      signal: controller.signal
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || 'AI error');
-        }
-        return res.json();
-      })
-      .then((data) => {
-        const uci = data.uci || '';
-        if (uci.length < 4) {
-          throw new Error('Invalid AI move');
-        }
-        const from = uci.slice(0, 2);
-        const to = uci.slice(2, 4);
-        const promotion = uci.length > 4 ? uci.slice(4, 5) : undefined;
-        if (requestId !== aiRequestIdRef.current) return;
-        const ok = makeLocalMove(from, to, promotion);
-        if (!ok) {
-          throw new Error(`AI move rejected: ${uci}`);
-        }
-        setAiError('');
-      })
-      .catch((error) => {
-        if (requestId !== aiRequestIdRef.current) return;
-        if (error?.name === 'AbortError') {
-          setAiError('AI request timed out.');
-          return;
-        }
-        setAiError(error?.message || 'AI move failed. Check server or rules.');
-      })
-      .finally(() => {
-        if (requestId !== aiRequestIdRef.current) return;
-        clearTimeout(timeout);
-        setAiThinking(false);
-      });
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [aiDepth, aiDifficulty, aiEnabled, aiThinking, aiTime, game, isOnline]);
-
-  const submitOnlineMove = async (from, to) => {
-    if (!gameId || !user) return;
+  const handleOnlineMove = async (moveObj) => {
+    if (!gameId || !gameData || movePending || !user) return;
     setMovePending(true);
     setMatchError('');
     try {
       const gameRef = doc(db, GAMES_COLLECTION, gameId);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(gameRef);
-        if (!snap.exists()) {
-          throw new Error('Game no longer exists');
-        }
+        if (!snap.exists()) throw new Error('Game not found');
+
         const data = snap.data();
-        if (data.status !== 'active') {
-          throw new Error('Game is not active');
-        }
-        const currentPlayerColor = data.whiteId === user.uid ? 'w' : data.blackId === user.uid ? 'b' : null;
-        if (!currentPlayerColor) {
-          throw new Error('You are not part of this game');
-        }
-        const currentGame = new KnightJumpChess(data.fen);
-        if (currentGame.turn() !== currentPlayerColor) {
-          throw new Error('Not your turn');
-        }
-        const moveResult = currentGame.move({ from, to, promotion: 'q' });
-        if (!moveResult) {
-          throw new Error('Illegal move');
-        }
-        const nextHistory = [...(data.moveHistory || []), moveResult.san || `${from}-${to}`];
+        if (data.status !== 'active') throw new Error('Game is not active');
+
+        const currentPlayerColor =
+          data.whiteId === user.uid ? 'w' : data.blackId === user.uid ? 'b' : null;
+        if (!currentPlayerColor) throw new Error('You are not part of this game');
+
+        const gameCopy = new KnightJumpChess(data.fen);
+        if (gameCopy.turn() !== currentPlayerColor) throw new Error('Not your turn');
+
+        const moveResult = gameCopy.move({
+          from: moveObj.from,
+          to: moveObj.to,
+          promotion: moveObj.promotion || 'q'
+        });
+        if (!moveResult) throw new Error('Illegal move');
+
+        const newHistory = [
+          ...(data.moveHistory || []),
+          moveResult.san || moveObj.san || `${moveObj.from}-${moveObj.to}`
+        ];
+
         let nextStatus = 'active';
         let result = null;
         let winner = null;
-        const kingWinner = currentGame.getWinnerByKingCapture();
+
+        const kingWinner = gameCopy.getWinnerByKingCapture?.();
         if (kingWinner) {
           nextStatus = 'completed';
           winner = kingWinner;
           result = `${formatTurn(kingWinner)} wins by king capture`;
-        } else if (currentGame.isCheckmateRider()) {
+        } else if (gameCopy.isCheckmateRider?.()) {
           nextStatus = 'completed';
-          winner = currentGame.turn() === 'w' ? 'b' : 'w';
+          winner = gameCopy.turn() === 'w' ? 'b' : 'w';
           result = `${formatTurn(winner)} wins by checkmate`;
-        } else if (currentGame.isStalemateRider()) {
+        } else if (gameCopy.isStalemateRider?.()) {
           nextStatus = 'draw';
           result = 'Stalemate';
         }
-        let ratingUpdate = null;
-        if (nextStatus === 'completed' || nextStatus === 'draw') {
-          const whiteRating = data.whiteRating ?? 1200;
-          const blackRating = data.blackRating ?? 1200;
+
+        let whiteRatingAfter = data.whiteRating ?? 1200;
+        let blackRatingAfter = data.blackRating ?? 1200;
+
+        if ((nextStatus === 'completed' || nextStatus === 'draw') && data.whiteId && data.blackId) {
           const whiteScore = winner === 'w' ? 1 : winner === 'b' ? 0 : 0.5;
           const blackScore = winner === 'b' ? 1 : winner === 'w' ? 0 : 0.5;
-          const whiteNew = calculateElo(whiteRating, blackRating, whiteScore);
-          const blackNew = calculateElo(blackRating, whiteRating, blackScore);
-          ratingUpdate = { whiteNew, blackNew };
-          tx.update(doc(db, 'users', data.whiteId), {
-            rating: whiteNew,
-            updatedAt: serverTimestamp()
-          });
-          if (data.blackId) {
-            tx.update(doc(db, 'users', data.blackId), {
-              rating: blackNew,
+
+          whiteRatingAfter = calculateElo(
+            data.whiteRating ?? 1200,
+            data.blackRating ?? 1200,
+            whiteScore
+          );
+          blackRatingAfter = calculateElo(
+            data.blackRating ?? 1200,
+            data.whiteRating ?? 1200,
+            blackScore
+          );
+
+          tx.set(
+            doc(db, 'users', data.whiteId),
+            {
+              uid: data.whiteId,
+              displayName: data.whiteName || 'White',
+              rating: whiteRatingAfter,
               updatedAt: serverTimestamp()
-            });
-          }
+            },
+            { merge: true }
+          );
+          tx.set(
+            doc(db, 'users', data.blackId),
+            {
+              uid: data.blackId,
+              displayName: data.blackName || 'Black',
+              rating: blackRatingAfter,
+              updatedAt: serverTimestamp()
+            },
+            { merge: true }
+          );
         }
+
         tx.update(gameRef, {
-          fen: currentGame.fen(),
-          moveHistory: nextHistory,
-          lastMove: { from, to, san: moveResult.san || null, by: user.uid },
+          fen: gameCopy.fen(),
+          moveHistory: newHistory,
+          lastMove: {
+            from: moveObj.from,
+            to: moveObj.to,
+            san: moveResult.san || null,
+            by: user.uid
+          },
           status: nextStatus,
           result,
           winner,
-          whiteRatingAfter: ratingUpdate?.whiteNew ?? null,
-          blackRatingAfter: ratingUpdate?.blackNew ?? null,
+          whiteRatingAfter: nextStatus === 'active' ? null : whiteRatingAfter,
+          blackRatingAfter: nextStatus === 'active' ? null : blackRatingAfter,
           updatedAt: serverTimestamp()
         });
       });
-      setSelectedSquare(null);
-      setLegalMoves([]);
     } catch (error) {
-      setMatchError(error.message || 'Move failed');
+      console.error('Move error:', error);
+      setMatchError(error.message || 'Failed to make move');
     } finally {
       setMovePending(false);
     }
-  };
-
-  const resetPractice = () => {
-    setGame(createNewGame());
-    setMoveHistory([]);
-    setSelectedSquare(null);
-    setLegalMoves([]);
-    setAiThinking(false);
-    setAiError('');
   };
 
   const startMatchmaking = async () => {
@@ -576,88 +677,166 @@ export default function App() {
     if (!isOnline) {
       const kingWinner = game.getWinnerByKingCapture();
       if (kingWinner) {
-        return `King captured. ${formatTurn(kingWinner)} wins.`;
+        return `${formatTurn(kingWinner)} wins by king capture`;
       }
       if (game.isCheckmateRider()) {
-        return `Checkmate. ${formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins.`;
+        return `Checkmate — ${formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins`;
       }
-      if (game.isStalemateRider()) return 'Stalemate.';
-      return `${formatTurn(game.turn())} to move.`;
+      if (game.isStalemateRider()) return 'Stalemate — Draw';
+      return `${formatTurn(game.turn())} to move`;
     }
-    if (!gameData) return 'Loading game...';
-    if (gameData.status === 'waiting') return 'Waiting for an opponent...';
+    if (!gameData) return 'Loading...';
+    if (gameData.status === 'waiting') return 'Waiting for opponent...';
     if (gameData.status === 'completed' || gameData.status === 'draw') {
-      return gameData.result || 'Game ended.';
+      return gameData.result || 'Game over';
     }
-    if (gameData.status === 'abandoned') return gameData.result || 'Game abandoned.';
-    return `${formatTurn(game.turn())} to move.`;
+    if (gameData.status === 'abandoned') return gameData.result || 'Abandoned';
+    return `${formatTurn(game.turn())} to move`;
   };
+
+  const isGameOver = () => {
+    return game.getWinnerByKingCapture() || game.isCheckmateRider() || game.isStalemateRider();
+  };
+
+  // ── Render helpers ──
+  const renderMoveTable = () => {
+    if (moveHistory.length === 0) {
+      return <p className="muted">No moves yet. Make your first move!</p>;
+    }
+
+    const pairs = [];
+    for (let i = 0; i < moveHistory.length; i += 2) {
+      pairs.push({
+        number: Math.floor(i / 2) + 1,
+        white: moveHistory[i],
+        black: moveHistory[i + 1] || null
+      });
+    }
+
+    return (
+      <div className="move-table">
+        {pairs.map((pair) => (
+          <div key={pair.number} className="move-table-row">
+            <span className="move-number-cell">{pair.number}.</span>
+            <span className="move-cell">{pair.white}</span>
+            <span className={`move-cell ${!pair.black ? 'move-cell--empty' : ''}`}>
+              {pair.black || ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Player info for bars
+  const topPlayerName = isOnline
+    ? (playerColor === 'w' ? opponentName : displayName || 'White')
+    : (aiEnabled ? 'AI Engine' : 'Black');
+  const bottomPlayerName = isOnline
+    ? (playerColor === 'w' ? displayName || 'White' : opponentName)
+    : (aiEnabled ? displayName || 'You' : 'White');
+  const topPlayerRating = isOnline
+    ? (playerColor === 'w' ? gameData?.blackRating : gameData?.whiteRating)
+    : (aiEnabled ? aiDifficulty.toUpperCase() : null);
+  const bottomPlayerRating = isOnline
+    ? (playerColor === 'w' ? gameData?.whiteRating : gameData?.blackRating)
+    : (aiEnabled ? rating : null);
 
   return (
     <div className="app">
+      {/* ── Top Bar ── */}
       <header className="top-bar">
         <div className="brand">
-          <p className="brand-kicker">ChessRider Arena</p>
-          <h1>ChessRider</h1>
-          <p className="brand-subtitle">Play the ChessRider rule online.</p>
+          <span className="brand-icon">♞</span>
+          <h1>KNightAuraChess</h1>
         </div>
         <div className="auth-panel">
           {!authReady ? (
             <span className="auth-status">Connecting...</span>
           ) : !firebaseEnabled ? (
-            <span className="auth-status">Local mode (Firebase not configured).</span>
+            <span className="auth-status">Local mode</span>
           ) : user ? (
-            <>
-              <div className="auth-user">
-                <span className="auth-name">{displayName}</span>
-                <span className="auth-meta">Rating {rating}</span>
-                <span className="auth-meta">{user.isAnonymous ? 'Anonymous' : 'Google'}</span>
-              </div>
+            <div className="auth-user">
+              <span className="auth-name">{displayName}</span>
+              <span className="auth-meta">({rating})</span>
               <button className="btn btn-ghost" onClick={signOut}>Sign out</button>
-            </>
+            </div>
           ) : (
             <div className="auth-actions">
-              <button className="btn btn-primary" onClick={signInWithGoogle}>Sign in with Google</button>
-              <button className="btn btn-ghost" onClick={signInAnonymously}>Play Anonymously</button>
+              <button className="btn btn-primary" onClick={signInWithGoogle}>Sign in</button>
+              <button className="btn btn-ghost" onClick={signInAnonymously}>Play as Guest</button>
             </div>
           )}
         </div>
       </header>
 
+      {/* ── Main Layout ── */}
       <main className="layout">
-        <section className="board-panel">
+        {/* ── Board Column ── */}
+        <section className="board-section">
+          {/* Status text */}
           <div className="board-header">
             <div>
-              <h2>{isOnline ? 'Live Match' : 'Practice Board'}</h2>
-              <p className="muted">{gameStatusText()}</p>
+              <p className="muted" style={{ fontSize: '0.85rem' }}>
+                {isOnline ? 'Live Match' : aiEnabled ? 'vs AI' : 'Practice'}
+                {' · '}
+                {gameStatusText()}
+              </p>
             </div>
             {isOnline && playerColor && (
               <div className="player-chip">
-                You are <strong>{formatTurn(playerColor)}</strong>
+                {formatTurn(playerColor)}
+              </div>
+            )}
+            {!isOnline && aiEnabled && (
+              <div className="ai-opponent-badge">
+                <span className="badge-icon">⚙</span>
+                <div className="badge-content">
+                  <p className="badge-label">AI</p>
+                  <p className="badge-difficulty">{aiDifficulty}</p>
+                </div>
               </div>
             )}
           </div>
+
+          {/* Alerts */}
           {game.getWinnerByKingCapture() && (
             <div className="victory-banner">
-              King captured. {formatTurn(game.getWinnerByKingCapture())} wins.
+              {formatTurn(game.getWinnerByKingCapture())} wins by king capture
             </div>
           )}
           {!game.getWinnerByKingCapture() && game.isCheckmateRider() && (
             <div className="victory-banner">
-              Checkmate. {formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins.
+              Checkmate — {formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins
             </div>
           )}
           {!game.getWinnerByKingCapture() && game.isStalemateRider() && (
-            <div className="victory-banner">
-              Stalemate. Draw.
-            </div>
+            <div className="victory-banner">Stalemate — Draw</div>
           )}
-          {game.isCheckRider() && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
-            <div className="check-alert">
-              Check! Your king can be captured.
-            </div>
+          {inCheck && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
+            <div className="check-alert">Check!</div>
           )}
 
+          {/* Top player bar */}
+          <div className="player-bar player-bar--top">
+            <div className="player-bar__info">
+              <span className="player-bar__name">{flipped ? bottomPlayerName : topPlayerName}</span>
+              {(flipped ? bottomPlayerRating : topPlayerRating) && (
+                <span className="player-bar__rating">
+                  ({flipped ? bottomPlayerRating : topPlayerRating})
+                </span>
+              )}
+            </div>
+            {aiEnabled && !isOnline && (
+              <div className="player-bar__clock">
+                <span className={game.turn() === (flipped ? 'w' : 'b') ? 'player-bar__clock--active' : ''}>
+                  {formatTime(moveTimestamps[moveTimestamps.length - 1]?.[flipped ? 'white' : 'black'] || 0)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Board */}
           <ChessBoard
             game={game}
             selectedSquare={selectedSquare}
@@ -665,195 +844,339 @@ export default function App() {
             onSquareClick={handleSquareClick}
             theme={theme}
             pieceStyle={pieceStyle}
+            lastMove={lastMove}
+            flipped={flipped}
+            inCheck={inCheck}
           />
 
-          {matchError && <p className="error-text">{matchError}</p>}
-        </section>
-
-        <aside className="sidebar">
-          <div className="panel">
-            <h3>Matchmaking</h3>
-            {isOnline ? (
-              <>
-                <p className="match-state">
-                  Status: <strong>{gameData?.status || matchStatus}</strong>
-                </p>
-                <p className="muted">Opponent: {opponentName}</p>
-                {gameData?.status === 'waiting' && playerColor && (
-                  <div className="ready-panel">
-                    <div className="ready-row">
-                      <span>You</span>
-                      <span className={readyStatus.self ? 'ready-chip ready-chip--on' : 'ready-chip'}>
-                        {readyStatus.self ? 'Ready' : 'Not ready'}
-                      </span>
-                    </div>
-                    <div className="ready-row">
-                      <span>{opponentName}</span>
-                      <span className={readyStatus.opponent ? 'ready-chip ready-chip--on' : 'ready-chip'}>
-                        {readyStatus.opponent ? 'Ready' : 'Not ready'}
-                      </span>
-                    </div>
-                    <button className="btn btn-primary" onClick={toggleReady}>
-                      {readyStatus.self ? 'Unready' : 'Ready up'}
-                    </button>
-                    <p className="muted">Game starts when both players are ready.</p>
-                  </div>
-                )}
-                {gameData?.status === 'waiting' ? (
-                  <button className="btn btn-ghost" onClick={cancelMatchmaking}>Cancel Search</button>
-                ) : (
-                  <button className="btn btn-ghost" onClick={leaveMatch}>Leave Match</button>
-                )}
-              </>
-            ) : (
-              <>
-                {user ? (
-                  <button className="btn btn-primary" onClick={startMatchmaking}>Find Match</button>
-                ) : (
-                  <p className="muted">
-                    {firebaseEnabled
-                      ? 'Sign in to find an online match.'
-                      : 'Local mode: online matchmaking is disabled.'}
-                  </p>
-                )}
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setAiEnabled(true);
-                    resetPractice();
-                  }}
-                >
-                  Play with AI
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="panel">
-            <h3>Custom Games</h3>
-            {!user ? (
-              <p className="muted">Sign in to create or join a game.</p>
-            ) : isOnline ? (
-              <p className="muted">Leave the current match to join another.</p>
-            ) : (
-              <>
-                <button className="btn btn-ghost" onClick={createCustomGame}>Create Game</button>
-                <div className="theme-select">
-                  <label htmlFor="join-game" className="muted">Join by game ID</label>
-                  <input
-                    id="join-game"
-                    className="select"
-                    type="text"
-                    value={joinGameId}
-                    onChange={(event) => setJoinGameId(event.target.value)}
-                    placeholder="Paste game id"
-                  />
-                  <button className="btn btn-primary" onClick={() => joinCustomGame(joinGameId)}>
-                    Join Game
-                  </button>
-                </div>
-                {waitingGames.length > 0 ? (
-                  <div className="waiting-list">
-                    <p className="muted">Open games:</p>
-                    <ul>
-                      {waitingGames.map((row) => (
-                        <li key={row.id}>
-                          <div className="waiting-meta">
-                            <strong>{row.host}</strong>
-                            <span className="muted">
-                              {row.createdAt
-                                ? row.createdAt.toLocaleString()
-                                : 'Just now'}
-                            </span>
-                          </div>
-                          <button className="btn btn-ghost" onClick={() => joinCustomGame(row.id)}>
-                            Join
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="muted">No open games yet.</p>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="panel">
-            <h3>Controls</h3>
-            <button className="btn btn-ghost" onClick={resetPractice} disabled={isOnline}>New Practice Game</button>
-            {aiEnabled && !isOnline && (
-              <p className="muted">AI opponent: bot_engine.py ({aiDifficulty.toUpperCase()}).</p>
-            )}
-            {aiEnabled && aiThinking && (
-              <p className="muted">AI thinking...</p>
-            )}
-            {aiEnabled && aiError && (
-              <p className="error-text">{aiError}</p>
-            )}
-            <div className="theme-select">
-              <label htmlFor="theme-choice" className="muted">Board style</label>
-              <select
-                id="theme-choice"
-                className="select"
-                value={theme}
-                onChange={(event) => setTheme(event.target.value)}
-              >
-                <option value="classic">Classic Walnut</option>
-                <option value="slate">Slate</option>
-                <option value="rosewood">Rosewood</option>
-              </select>
-            </div>
-            <div className="theme-select">
-              <label htmlFor="piece-choice" className="muted">Piece set</label>
-              <select
-                id="piece-choice"
-                className="select"
-                value={pieceStyle}
-                onChange={(event) => setPieceStyle(event.target.value)}
-              >
-                <option value="svg">PyChess Classic (Cburnett)</option>
-                <option value="minimal">Minimal Letters</option>
-              </select>
-            </div>
-            <p className="muted">
-              Online games follow the ChessRider rule: any piece near a friendly knight may jump
-              over one blocker on its normal path.
-            </p>
-          </div>
-
-          <div className="panel">
-            <h3>Move History</h3>
-            <div className="moves-list">
-              {moveHistory.length === 0 ? (
-                <p className="muted">No moves yet.</p>
-              ) : (
-                <ol>
-                  {moveHistory.map((move, index) => (
-                    <li key={`${move}-${index}`}>{index + 1}. {move}</li>
-                  ))}
-                </ol>
+          {/* Bottom player bar */}
+          <div className="player-bar player-bar--bottom">
+            <div className="player-bar__info">
+              <span className="player-bar__name">{flipped ? topPlayerName : bottomPlayerName}</span>
+              {(flipped ? topPlayerRating : bottomPlayerRating) && (
+                <span className="player-bar__rating">
+                  ({flipped ? topPlayerRating : bottomPlayerRating})
+                </span>
               )}
             </div>
+            {aiEnabled && !isOnline && (
+              <div className="player-bar__clock">
+                <span className={game.turn() === (flipped ? 'b' : 'w') ? 'player-bar__clock--active' : ''}>
+                  {formatTime(moveTimestamps[moveTimestamps.length - 1]?.[flipped ? 'black' : 'white'] || 0)}
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="panel">
-            <h3>About the Variant</h3>
-            <p className="muted">
-              Pieces adjacent to or a knight's move away from a friendly knight can jump over one
-              blocking piece and continue moving along their normal path.
-            </p>
+          {/* Board action buttons */}
+          <div className="board-actions">
+            <button
+              className="btn btn-ghost"
+              onClick={() => setFlipped(!flipped)}
+              title="Flip board"
+            >
+              ⇅ Flip
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={resetPractice}
+              disabled={isOnline}
+              title="New game"
+            >
+              + New
+            </button>
+            {aiEnabled && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => { setAiEnabled(false); resetPractice(); }}
+              >
+                Stop AI
+              </button>
+            )}
+            {isOnline && (
+              <button className="btn btn-danger" onClick={leaveMatch}>
+                Resign
+              </button>
+            )}
           </div>
-        </aside>
+
+          {matchError && <p className="error-text">{matchError}</p>}
+
+          {/* AI thinking indicator */}
+          {aiThinking && (
+            <div className="ai-thinking-indicator">
+              <div className="thinking-spinner" />
+              <span className="thinking-text">AI is thinking...</span>
+            </div>
+          )}
+          {aiError && <p className="error-text">{aiError}</p>}
+        </section>
+
+        {/* ── Sidebar ── */}
+        <div className="sidebar">
+          <nav className="tab-navigation">
+            {[
+              { key: 'play', label: 'Play' },
+              { key: 'moves', label: 'Moves' },
+              { key: 'games', label: 'Games' },
+              { key: 'settings', label: 'Settings' },
+              { key: 'learn', label: 'Learn' }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="tab-content">
+            {/* ── Play Tab ── */}
+            {activeTab === 'play' && (
+              <div className="tab-panel">
+                <h3>Play</h3>
+                {isOnline ? (
+                  <>
+                    <p className="match-state">
+                      Status: <strong>{gameData?.status || matchStatus}</strong>
+                    </p>
+                    <p className="muted">Opponent: {opponentName}</p>
+                    {gameData?.status === 'waiting' && playerColor && (
+                      <div className="ready-panel">
+                        <div className="ready-row">
+                          <span>You</span>
+                          <span className={readyStatus.self ? 'ready-chip ready-chip--on' : 'ready-chip'}>
+                            {readyStatus.self ? 'Ready' : 'Not ready'}
+                          </span>
+                        </div>
+                        <div className="ready-row">
+                          <span>{opponentName}</span>
+                          <span className={readyStatus.opponent ? 'ready-chip ready-chip--on' : 'ready-chip'}>
+                            {readyStatus.opponent ? 'Ready' : 'Not ready'}
+                          </span>
+                        </div>
+                        <button className="btn btn-primary" onClick={toggleReady}>
+                          {readyStatus.self ? 'Unready' : 'Ready up'}
+                        </button>
+                        <p className="muted">Game starts when both players are ready.</p>
+                      </div>
+                    )}
+                    {gameData?.status === 'waiting' ? (
+                      <button className="btn btn-ghost" onClick={cancelMatchmaking}>Cancel</button>
+                    ) : (
+                      <button className="btn btn-danger" onClick={leaveMatch}>Leave Match</button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {user ? (
+                      <button className="btn btn-primary" onClick={startMatchmaking} style={{ width: '100%', marginBottom: 8 }}>
+                        Find Online Match
+                      </button>
+                    ) : (
+                      <p className="muted" style={{ marginBottom: 8 }}>
+                        {firebaseEnabled
+                          ? 'Sign in to play online.'
+                          : 'Local mode — online play disabled.'}
+                      </p>
+                    )}
+                    <button
+                      className="btn btn-ghost"
+                      style={{ width: '100%', marginBottom: 8 }}
+                      onClick={() => {
+                        setAiEnabled(true);
+                        resetPractice();
+                      }}
+                    >
+                      ⚙ Play vs AI
+                    </button>
+                    
+                    <div className="theme-select">
+                      <label htmlFor="ai-difficulty" className="muted">AI Difficulty</label>
+                      <select
+                        id="ai-difficulty"
+                        className="select"
+                        value={aiDifficulty}
+                        onChange={(event) => setAiDifficulty(event.target.value)}
+                        disabled={aiThinking}
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                        <option value="expert">Expert</option>
+                      </select>
+                    </div>
+                    
+                    {aiEnabled && (
+                      <div className="ai-mode-status">
+                        <p className="ai-status-text">✓ AI Active</p>
+                        <p className="ai-status-difficulty">{aiDifficulty.charAt(0).toUpperCase() + aiDifficulty.slice(1)}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Moves Tab ── */}
+            {activeTab === 'moves' && (
+              <div className="tab-panel">
+                <h3>Moves</h3>
+                <div className="moves-list">
+                  {renderMoveTable()}
+                </div>
+                {moveHistory.length > 0 && aiEnabled && (
+                  <div className="time-summary" style={{ marginTop: 10 }}>
+                    <div className="summary-item">
+                      <span className="summary-label">White</span>
+                      <span className="summary-time">
+                        {formatTime(moveTimestamps.reduce((sum, t) => sum + (t?.white || 0), 0))}
+                      </span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Black</span>
+                      <span className="summary-time">
+                        {formatTime(moveTimestamps.reduce((sum, t) => sum + (t?.black || 0), 0))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Games Tab ── */}
+            {activeTab === 'games' && (
+              <div className="tab-panel">
+                <h3>Custom Games</h3>
+                {!user ? (
+                  <p className="muted">Sign in to create or join a game.</p>
+                ) : isOnline ? (
+                  <p className="muted">Leave the current match to join another.</p>
+                ) : (
+                  <>
+                    <button className="btn btn-primary" onClick={createCustomGame} style={{ width: '100%', marginBottom: 8 }}>
+                      Create New Game
+                    </button>
+                    <div className="theme-select">
+                      <label htmlFor="join-game" className="muted">Join by game ID</label>
+                      <input
+                        id="join-game"
+                        className="select"
+                        type="text"
+                        value={joinGameId}
+                        onChange={(event) => setJoinGameId(event.target.value)}
+                        placeholder="Paste game ID"
+                      />
+                      <button className="btn btn-primary" onClick={() => joinCustomGame(joinGameId)} style={{ marginTop: 4 }}>
+                        Join
+                      </button>
+                    </div>
+                    {waitingGames.length > 0 ? (
+                      <div className="waiting-list">
+                        <p className="muted">Open games:</p>
+                        <ul>
+                          {waitingGames.map((row) => (
+                            <li key={row.id}>
+                              <div className="waiting-meta">
+                                <strong>{row.host}</strong>
+                                <span className="muted">
+                                  {row.createdAt
+                                    ? row.createdAt.toLocaleString()
+                                    : 'Just now'}
+                                </span>
+                              </div>
+                              <button className="btn btn-ghost" onClick={() => joinCustomGame(row.id)}>
+                                Join
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="muted">No open games.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Settings Tab ── */}
+            {activeTab === 'settings' && (
+              <div className="tab-panel">
+                <h3>Settings</h3>
+                <div className="theme-select">
+                  <label htmlFor="theme-choice" className="muted">Board theme</label>
+                  <select
+                    id="theme-choice"
+                    className="select"
+                    value={theme}
+                    onChange={(event) => setTheme(event.target.value)}
+                  >
+                    <option value="classic">Brown (Classic)</option>
+                    <option value="slate">Blue-Gray (Slate)</option>
+                    <option value="rosewood">Rosewood</option>
+                  </select>
+                </div>
+                <div className="theme-select">
+                  <label htmlFor="piece-choice" className="muted">Piece set</label>
+                  <select
+                    id="piece-choice"
+                    className="select"
+                    value={pieceStyle}
+                    onChange={(event) => setPieceStyle(event.target.value)}
+                  >
+                    <option value="svg">Cburnett (Classic)</option>
+                    <option value="minimal">Letters</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* ── Learn Tab ── */}
+            {activeTab === 'learn' && (
+              <div className="tab-panel">
+                <h3>How to Play</h3>
+                <p className="manual-intro">
+                  KNightAuraChess keeps standard chess movement, but pieces near friendly knights can jump over one blocker.
+                </p>
+                <div className="manual-grid">
+                  {manualCards.map((card) => (
+                    <article key={card.title} className="manual-card">
+                      <img src={card.image} alt={card.alt} className="manual-image" />
+                      <h4>{card.title}</h4>
+                      <p className="muted">{card.body}</p>
+                    </article>
+                  ))}
+                </div>
+                <div className="manual-gif" role="img" aria-label="Animated example of a rook jumping one blocker.">
+                  <div className="manual-gif-track">
+                    <div className="manual-square manual-square--from">R</div>
+                    <div className="manual-square manual-square--blocked">P</div>
+                    <div className="manual-square" />
+                    <div className="manual-square manual-square--target">x</div>
+                    <div className="manual-jumper">R</div>
+                  </div>
+                  <p className="muted" style={{ marginTop: 6 }}>One jump over a blocker, then land on a legal square.</p>
+                </div>
+                <hr className="divider" />
+                <h4>About the Variant</h4>
+                <p className="muted">
+                  Pieces adjacent to or a knight's move away from a friendly knight can jump over one
+                  blocking piece and continue along their normal path. Combine classic tactics
+                  with jump mechanics for deeper strategy.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
 
       <footer className="footer">
-        <span>ChessRider</span>
-        <span>Rule set: ChessRider</span>
+        <span>KNightAuraChess</span>
+        <span>A chess variant with knight-empowered jumping</span>
       </footer>
     </div>
   );
 }
-
-

@@ -63,17 +63,36 @@ export function AuthProvider({ children }) {
       try {
         const profileRef = doc(db, 'users', user.uid);
         const baseProfile = {
+          uid: user.uid,
           displayName: getDisplayName(user),
-          rating: 1200,
+          email: user.email || null,
+          photoURL: user.photoURL || null,
           isAnonymous: user.isAnonymous,
           updatedAt: serverTimestamp()
         };
 
         const snap = await getDoc(profileRef);
         if (!snap.exists()) {
-          await setDoc(profileRef, { ...baseProfile, createdAt: serverTimestamp() });
+          await setDoc(profileRef, {
+            ...baseProfile,
+            rating: 1200,
+            createdAt: serverTimestamp()
+          });
         } else {
-          await setDoc(profileRef, baseProfile, { merge: true });
+          const existing = snap.data() || {};
+          const patch = {
+            ...baseProfile,
+          };
+
+          // Never reset rating for returning users.
+          if (typeof existing.rating !== 'number') {
+            patch.rating = 1200;
+          }
+          if (!existing.createdAt) {
+            patch.createdAt = serverTimestamp();
+          }
+
+          await setDoc(profileRef, patch, { merge: true });
         }
 
         if (!active) return;

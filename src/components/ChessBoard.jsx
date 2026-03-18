@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import wp from '../assets/chess/cburnett/Chess_plt45.svg';
 import wn from '../assets/chess/cburnett/Chess_nlt45.svg';
 import wb from '../assets/chess/cburnett/Chess_blt45.svg';
@@ -29,14 +29,54 @@ export default function ChessBoard({
   legalMoves,
   onSquareClick,
   theme,
-  pieceStyle
+  pieceStyle,
+  lastMove,
+  flipped,
+  inCheck
 }) {
-  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-  const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+  const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ranksBase = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
-  const handleSquareClick = (square) => {
-    onSquareClick(square);
+  const files = flipped ? [...filesBase].reverse() : filesBase;
+  const ranks = flipped ? [...ranksBase].reverse() : ranksBase;
+
+  // Get knight aura squares when a piece is selected
+  const getKnightAuraSquares = () => {
+    if (!game || !selectedSquare) return new Set();
+    const piece = game.get(selectedSquare);
+    if (!piece) return new Set();
+
+    const color = piece.color;
+    const auraSquares = new Set();  
+    // Check which squares are near a friendly knight
+    for (const r of ranksBase) {
+      for (const f of filesBase) {
+        const sq = `${f}${r}`;
+        if (game.isNearKnight(sq, color)) {
+          auraSquares.add(sq);
+        }
+      }
+    }
+    return auraSquares;
   };
+
+  const knightAuraSquares = getKnightAuraSquares();
+
+  // Find king in check
+  const getCheckSquare = () => {
+    if (!game || !inCheck) return null;
+    const turn = game.turn();
+    for (const r of ranksBase) {
+      for (const f of filesBase) {
+        const sq = `${f}${r}`;
+        const piece = game.get(sq);
+        if (piece && piece.type === 'k' && piece.color === turn) return sq;
+      }
+    }
+    return null;
+  };
+
+  const checkSquare = getCheckSquare();
 
   return (
     <div className={`chessboard-wrapper theme-${theme || 'classic'}`}>
@@ -51,13 +91,21 @@ export default function ChessBoard({
                 const isSelected = selectedSquare === square;
                 const isLegal = legalMoves.includes(square);
                 const isCapture = isLegal && piece && piece.color !== game.turn();
+                const isLastFrom = lastMove && lastMove.from === square;
+                const isLastTo = lastMove && lastMove.to === square;
+                const isCheck = checkSquare === square;
+                const isAura = knightAuraSquares.has(square) && selectedSquare;
 
                 const squareClass = [
                   'square',
                   isLight ? 'square--light' : 'square--dark',
                   isSelected ? 'square--selected' : '',
-                  isLegal ? 'square--legal' : '',
-                  isCapture ? 'square--capture' : ''
+                  isLegal && !isCapture ? 'square--legal' : '',
+                  isCapture ? 'square--capture' : '',
+                  isLastFrom ? 'square--last-from' : '',
+                  isLastTo ? 'square--last-to' : '',
+                  isCheck ? 'square--check' : '',
+                  isAura && !isSelected && !isLegal ? 'square--aura' : ''
                 ]
                   .filter(Boolean)
                   .join(' ');
@@ -67,7 +115,7 @@ export default function ChessBoard({
                     key={square}
                     type="button"
                     className={squareClass}
-                    onClick={() => handleSquareClick(square)}
+                    onClick={() => onSquareClick(square)}
                     aria-label={`Square ${square}`}
                   >
                     {piece && pieceStyle === 'svg' && (
@@ -83,30 +131,16 @@ export default function ChessBoard({
                         {pieceLetters[piece.color][piece.type]}
                       </span>
                     )}
-                    {rank === '1' && (
+                    {rank === (flipped ? '8' : '1') && (
                       <span className="file-label">{file}</span>
                     )}
-                    {file === 'a' && (
+                    {file === (flipped ? 'h' : 'a') && (
                       <span className="rank-label">{rank}</span>
                     )}
                   </button>
                 );
               })
             )}
-          </div>
-          <div className="board-legend">
-            <div className="legend-item">
-              <span className="legend-color legend-selected"></span>
-              Selected piece
-            </div>
-            <div className="legend-item">
-              <span className="legend-color legend-move"></span>
-              Legal move
-            </div>
-            <div className="legend-item">
-              <span className="legend-color legend-capture"></span>
-              Capture move
-            </div>
           </div>
         </div>
       ) : (
