@@ -811,10 +811,10 @@ export default function App() {
     ? (playerColor === 'w' ? displayName || 'White' : opponentName)
     : (aiEnabled ? displayName || 'You' : 'White');
   const topPlayerRating = isOnline
-    ? (playerColor === 'w' ? gameData?.blackRating : gameData?.whiteRating)
+    ? (playerColor === 'w' ? (gameData?.blackRatingAfter ?? gameData?.blackRating) : (gameData?.whiteRatingAfter ?? gameData?.whiteRating))
     : (aiEnabled ? aiDifficulty.toUpperCase() : null);
   const bottomPlayerRating = isOnline
-    ? (playerColor === 'w' ? gameData?.whiteRating : gameData?.blackRating)
+    ? (playerColor === 'w' ? (gameData?.whiteRatingAfter ?? gameData?.whiteRating) : (gameData?.blackRatingAfter ?? gameData?.blackRating))
     : (aiEnabled ? rating : null);
 
   return (
