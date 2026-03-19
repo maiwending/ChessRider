@@ -35,8 +35,10 @@
   display: none;
 }
 
-.brand-icon {
-  font-size: 1.3rem;
+.brand-logo {
+  height: 28px;
+  width: auto;
+  border-radius: 4px;
 }
 
 /* ─── Auth ─── */

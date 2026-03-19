@@ -776,7 +776,7 @@ export default function App() {
       {/* ── Top Bar ── */}
       <header className="top-bar">
         <div className="brand">
-          <span className="brand-icon">♞</span>
+          <img src="/riderchess.png" alt="Logo" className="brand-logo" />
           <h1>KNightAuraChess</h1>
         </div>
         <div className="auth-panel">
