@@ -132,7 +132,7 @@ export function AuthProvider({ children }) {
       profile,
       profileReady,
       rating: profile?.rating ?? 1200,
-      displayName: getDisplayName(user),
+      displayName: profile?.displayName || getDisplayName(user),
       signInWithGoogle: () => {
         if (!firebaseEnabled || !auth || !googleProvider) return firebaseNotReadyError();
         return signInWithPopup(auth, googleProvider);

@@ -17,6 +17,9 @@ import {
 import KnightJumpChess from './KnightJumpChess.js';
 import ChessBoard from './components/ChessBoard.jsx';
 import LearnPage from './components/LearnPage.jsx';
+import LeaderboardPanel from './components/LeaderboardPanel.jsx';
+import UserProfileModal from './components/UserProfileModal.jsx';
+import SocialTab from './components/SocialTab.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { db, firebaseEnabled } from './utils/firebase.js';
 import './App.css';
@@ -87,7 +90,7 @@ const LEARN_STEPS = [
 ];
 
 export default function App() {
-  const { user, authReady, displayName, rating, signInWithGoogle, signInAnonymously, signOut } = useAuth();
+  const { user, authReady, profile, displayName, rating, signInWithGoogle, signInAnonymously, signOut } = useAuth();
   const [currentPage, setCurrentPage] = useState('game');
   const [game, setGame] = useState(() => createNewGame());
   const [moveHistory, setMoveHistory] = useState([]);
@@ -108,6 +111,7 @@ export default function App() {
   const [aiThinking, setAiThinking] = useState(false);
   const [aiError, setAiError] = useState('');
   const [activeTab, setActiveTab] = useState('play');
+  const [profileModalUid, setProfileModalUid] = useState(null);
   const [moveTimestamps, setMoveTimestamps] = useState([{ white: 0, black: 0 }]);
   const [currentMoveStartTime, setCurrentMoveStartTime] = useState(Date.now());
   const lastAiFenRef = useRef(null);
@@ -856,6 +860,14 @@ export default function App() {
       ) : (
         <>
           <main className="layout">
+        {/* ── Left: Leaderboard ── */}
+        {firebaseEnabled && (
+          <LeaderboardPanel
+            currentUser={user}
+            onPlayerClick={(p) => setProfileModalUid(p.id)}
+          />
+        )}
+
         {/* ── Board Column ── */}
         <section className="board-section">
           {/* Status text */}
@@ -1004,6 +1016,7 @@ export default function App() {
               { key: 'moves', icon: '☰', label: 'Moves' },
               { key: 'games', icon: '⚔', label: 'Games' },
               { key: 'settings', icon: '⚙', label: 'Settings' },
+              { key: 'social', icon: '👥', label: 'Social' },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -1225,7 +1238,26 @@ export default function App() {
                     <option value="minimal">Letters</option>
                   </select>
                 </div>
+                {user && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginTop: '1rem', width: '100%' }}
+                    onClick={() => setProfileModalUid(user.uid)}
+                  >
+                    Edit My Profile
+                  </button>
+                )}
               </div>
+            )}
+
+            {/* ── Social Tab ── */}
+            {activeTab === 'social' && (
+              <SocialTab
+                currentUser={user}
+                currentUserName={displayName}
+                currentUserPhotoURL={profile?.photoURL || null}
+                onPlayerClick={(p) => setProfileModalUid(p.id)}
+              />
             )}
 
           </div>
@@ -1237,6 +1269,20 @@ export default function App() {
         <span>A chess variant with knight-empowered jumping</span>
       </footer>
         </>
+      )}
+
+      {/* ── Profile Modal ── */}
+      {profileModalUid && (
+        <UserProfileModal
+          profileUid={profileModalUid}
+          currentUser={user}
+          currentUserName={displayName}
+          onClose={() => setProfileModalUid(null)}
+          onOpenDm={() => {
+            setProfileModalUid(null);
+            setActiveTab('social');
+          }}
+        />
       )}
     </div>
   );
