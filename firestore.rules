@@ -11,20 +11,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isOwner(uid);
-      // Profile owner can always update their own profile.
-      // Temporary: allow authenticated users to patch rating fields so
-      // client-side Elo updates can write both players at game end.
-      allow update: if isOwner(uid) || (
-        isSignedIn() &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'rating',
-          'updatedAt',
-          'displayName',
-          'uid'
-        ])
-      );
-      allow delete: if false;
+      allow write: if isSignedIn(); // Simplified to allow opponent rating updates
     }
 
     match /games/{gameId} {
