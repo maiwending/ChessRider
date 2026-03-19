@@ -173,7 +173,7 @@ function alphaBeta(fen, depth, alpha, beta, isMaximizing) {
     const eval0 = evaluate(game);
     if (Math.abs(eval0) > 50000) return eval0;
     // Otherwise checkmate/stalemate
-    if (game.isCheckmate()) {
+    if (game.isCheckmateRider()) {
       return isMaximizing ? -80000 - depth : 80000 + depth;
     }
     return 0; // stalemate

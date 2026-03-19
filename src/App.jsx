@@ -435,11 +435,11 @@ export default function App() {
           nextStatus = 'completed';
           winner = 'w';
           result = 'White wins by king capture';
-        } else if (gameCopy.isCheckmate()) {
+        } else if (gameCopy.isCheckmateRider()) {
           nextStatus = 'completed';
           winner = gameCopy.turn() === 'w' ? 'b' : 'w';
           result = `${formatTurn(winner)} wins by checkmate`;
-        } else if (gameCopy.isStalemate() || gameCopy.isDraw()) {
+        } else if (gameCopy.isStalemateRider() || gameCopy.isDraw()) {
           nextStatus = 'draw';
           result = 'Draw';
         }
@@ -693,13 +693,52 @@ export default function App() {
   const leaveMatch = async () => {
     if (!gameId || !gameData) return;
     try {
-      const opponentColor = playerColor === 'w' ? 'b' : 'w';
-      await updateDoc(doc(db, GAMES_COLLECTION, gameId), {
-        status: 'abandoned',
-        winner: opponentColor,
-        result: `${formatTurn(opponentColor)} wins by forfeit`,
-        updatedAt: serverTimestamp()
-      });
+      if (gameData.status === 'active') {
+        const gameRef = doc(db, GAMES_COLLECTION, gameId);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(gameRef);
+          if (!snap.exists()) return;
+          const data = snap.data();
+          if (data.status !== 'active') return;
+
+          const winnerColor = playerColor === 'w' ? 'b' : 'w';
+
+          let whiteRatingAfter = data.whiteRating ?? 1200;
+          let blackRatingAfter = data.blackRating ?? 1200;
+
+          if (data.whiteId && data.blackId) {
+            const whiteScore = winnerColor === 'w' ? 1 : 0;
+            const blackScore = winnerColor === 'b' ? 1 : 0;
+
+            whiteRatingAfter = calculateElo(data.whiteRating ?? 1200, data.blackRating ?? 1200, whiteScore);
+            blackRatingAfter = calculateElo(data.blackRating ?? 1200, data.whiteRating ?? 1200, blackScore);
+
+            tx.set(doc(db, 'users', data.whiteId), {
+              rating: whiteRatingAfter, updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            tx.set(doc(db, 'users', data.blackId), {
+              rating: blackRatingAfter, updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+
+          tx.update(gameRef, {
+            status: 'abandoned',
+            winner: winnerColor,
+            result: `${formatTurn(winnerColor)} wins by forfeit`,
+            whiteRatingAfter,
+            blackRatingAfter,
+            updatedAt: serverTimestamp()
+          });
+        });
+      } else {
+        // Just cancel if not officially active
+        await updateDoc(doc(db, GAMES_COLLECTION, gameId), {
+          status: 'abandoned',
+          result: 'Match cancelled',
+          updatedAt: serverTimestamp()
+        });
+      }
     } catch (error) {
       setMatchError(error.message || 'Failed to leave match');
     } finally {
@@ -1014,7 +1053,7 @@ export default function App() {
                     {gameData?.status === 'waiting' ? (
                       <button className="btn btn-ghost" onClick={cancelMatchmaking}>Cancel</button>
                     ) : (
-                      <button className="btn btn-danger" onClick={leaveMatch}>Leave Match</button>
+                      <button className="btn btn-danger" onClick={leaveMatch}>Resign</button>
                     )}
                   </>
                 ) : (

@@ -649,31 +649,17 @@ class KnightJumpChess extends Chess {
   }
 
   /**
-   * Rider rule: checkmate if in check and no move removes capture threat.
+   * Rider rule: checkmate if in check and no legal moves exist.
    */
   isCheckmateRider() {
-    if (!this.isCheckRider()) return false;
-    const moverColor = this.turn();
-    const moves = this.moves({ verbose: true });
-    if (moves.length === 0) return true;
-
-    for (const move of moves) {
-      const copy = new KnightJumpChess(this.fen());
-      copy.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-      if (!copy.isKingCapturable(moverColor)) {
-        return false;
-      }
-    }
-    return true;
+    return this.isCheckRider() && this.moves().length === 0;
   }
 
   /**
-   * Rider rule: stalemate if not in check and no moves available.
+   * Rider rule: stalemate if not in check and no legal moves exist.
    */
   isStalemateRider() {
-    if (this.isCheckRider()) return false;
-    const moves = this.moves({ verbose: true });
-    return moves.length === 0;
+    return !this.isCheckRider() && this.moves().length === 0;
   }
 
   /**
