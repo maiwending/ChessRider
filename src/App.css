@@ -78,6 +78,24 @@
   flex-direction: column;
   background: var(--bg-body);
   color: var(--text-primary);
+  position: relative;
+}
+
+.app::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28vw; /* Smaller to avoid overlap */
+  max-width: 400px;
+  height: 100%;
+  background-image: url('/riderchess.png');
+  background-size: contain;
+  background-position: 24px center;
+  background-repeat: no-repeat;
+  opacity: 0.20; /* Subtle watermark */
+  pointer-events: none;
+  z-index: 0;
 }
 
 .layout {
@@ -89,6 +107,8 @@
   padding: 16px 16px 24px;
   align-items: start;
   width: 100%;
+  position: relative;
+  z-index: 1; /* Keep above background image */
 }
 
 /* ─── Board Section ─── */
