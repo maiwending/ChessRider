@@ -693,6 +693,11 @@ export default function App() {
   const leaveMatch = async () => {
     if (!gameId || !gameData) return;
     try {
+      // If the game is already over, don't overwrite it in Firestore, just return to lobby locally.
+      if (['completed', 'draw', 'abandoned'].includes(gameData.status)) {
+        return;
+      }
+
       if (gameData.status === 'active') {
         const gameRef = doc(db, GAMES_COLLECTION, gameId);
         await runTransaction(db, async (tx) => {
@@ -732,7 +737,7 @@ export default function App() {
           });
         });
       } else {
-        // Just cancel if not officially active
+        // Cancel pre-game waiting
         await updateDoc(doc(db, GAMES_COLLECTION, gameId), {
           status: 'abandoned',
           result: 'Match cancelled',
@@ -1052,6 +1057,8 @@ export default function App() {
                     )}
                     {gameData?.status === 'waiting' ? (
                       <button className="btn btn-ghost" onClick={cancelMatchmaking}>Cancel</button>
+                    ) : ['completed', 'draw', 'abandoned'].includes(gameData?.status) ? (
+                      <button className="btn btn-primary" onClick={leaveMatch}>Return to Lobby</button>
                     ) : (
                       <button className="btn btn-danger" onClick={leaveMatch}>Resign</button>
                     )}
