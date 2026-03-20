@@ -406,9 +406,8 @@ export default function App() {
   };
 
   const handleSquareClick = (square) => {
-    if (isOnline && playerColor !== game.turn()) {
-      return;
-    }
+    if (isOnline && playerColor !== game.turn()) return;
+    if (aiEnabled && !isOnline && game.turn() === 'b') return; // block moving AI's pieces
 
     if (selectedSquare === null) {
       const piecesOnSquare = game.get(square);
