@@ -21,6 +21,7 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
   const [announcements, setAnnouncements] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +39,7 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
   const handleSend = async () => {
     if (!currentUser || !text.trim() || !db) return;
     setSending(true);
+    setError('');
     try {
       await addDoc(collection(db, 'announcements'), {
         text: text.trim(),
@@ -47,6 +49,8 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
         createdAt: serverTimestamp()
       });
       setText('');
+    } catch (e) {
+      setError(e?.message || 'Failed to post');
     } finally {
       setSending(false);
     }
@@ -74,6 +78,7 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
           </div>
         ))}
       </div>
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.8rem', margin: '0.4rem 0' }}>{error}</p>}
       {currentUser ? (
         <div className="ann-input-row">
           <input
