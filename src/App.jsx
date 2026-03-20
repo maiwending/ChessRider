@@ -264,13 +264,15 @@ export default function App() {
   }, [gameId]);
 
   useEffect(() => {
-    if (!user) {
+    // authReady guards against the brief window where user is null while Firebase
+    // is still resolving the session — don't evict the persisted gameId prematurely.
+    if (authReady && !user) {
       setGameId(null);
       setGameData(null);
       setMatchStatus('idle');
       setMatchError('');
     }
-  }, [user]);
+  }, [authReady, user]);
 
   // ── Unread DM badge ──
   useEffect(() => {
