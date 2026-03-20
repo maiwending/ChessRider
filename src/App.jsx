@@ -165,6 +165,13 @@ export default function App() {
     else if (playerColor === 'w') setFlipped(false);
   }, [playerColor]);
 
+  // Sync time control for guest (non-host) when gameData loads or host changes it
+  useEffect(() => {
+    if (gameData?.timeControl && playerColor === 'b') {
+      setSelectedTimeControl(gameData.timeControl);
+    }
+  }, [gameData?.timeControl, playerColor]);
+
   // Online clock countdown
   useEffect(() => {
     if (!isOnline || !gameData || gameData.status !== 'active') {
@@ -197,7 +204,7 @@ export default function App() {
     };
 
     tick();
-    const id = setInterval(tick, 200);
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameData?.status, gameData?.lastMoveAt, gameData?.whiteTimeLeft, gameData?.blackTimeLeft, gameData?.timeControl, isOnline, playerColor]);
