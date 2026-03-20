@@ -118,7 +118,12 @@ export default function App() {
   const [legalMoves, setLegalMoves] = useState([]);
   const [lastMove, setLastMove] = useState(null);
   const [flipped, setFlipped] = useState(false);
-  const [gameId, setGameId] = useState(null);
+  const [gameId, setGameIdRaw] = useState(() => localStorage.getItem('cr_gameId') || null);
+  const setGameId = (id) => {
+    if (id) localStorage.setItem('cr_gameId', id);
+    else localStorage.removeItem('cr_gameId');
+    setGameIdRaw(id);
+  };
   const [gameData, setGameData] = useState(null);
   const [matchStatus, setMatchStatus] = useState('idle');
   const [matchError, setMatchError] = useState('');
