@@ -404,49 +404,58 @@ function findBestMove(fen, difficulty) {
   searchDeadline = performance.now() + settings.timeLimitMs;
   nodesSearched  = 0;
 
-  // Reset killers for fresh search (but keep TT — it persists across moves)
+  // Reset killers for fresh search (TT persists across moves — intentional)
   for (const k of killers) { k[0] = null; k[1] = null; }
 
-  const isWhite = game.turn() === 'w';
-  // Absolute (white-perspective) score; white maximises, black minimises
-  let bestMove  = moves[Math.floor(Math.random() * moves.length)]; // safe fallback
-  let bestScore = isWhite ? -Infinity : Infinity;
+  let bestMove   = moves[Math.floor(Math.random() * moves.length)]; // safe fallback
+  let bestScore  = -Infinity; // negamax: from current player's perspective
   let finalDepth = 1;
 
   for (let d = 1; d <= settings.maxDepth; d++) {
     if (performance.now() > searchDeadline) break;
 
-    let iterBest      = null;
-    let iterBestScore = isWhite ? -Infinity : Infinity;
+    // Probe TT for root position — the previous iteration stores the best move here,
+    // which is the single most important move to try first for efficient pruning.
+    const rootTt  = ttProbe(fen);
+    const ordered = orderMoves(moves, rootTt?.bestMoveKey ?? null, 0);
 
-    // Re-order moves using current TT (move from previous iteration goes first)
-    const ordered = orderMoves(moves, null, 0);
+    let iterBest      = null;
+    let iterBestScore = -Infinity;
+    // rootAlpha: best negamax score found so far in this iteration.
+    // Used as the beta bound for subsequent root moves, enabling alpha-beta pruning.
+    let rootAlpha = -Infinity;
+    let timedOut  = false;
 
     for (const move of ordered) {
-      if (performance.now() > searchDeadline) break;
+      if (performance.now() > searchDeadline) { timedOut = true; break; }
 
       const child = new KnightJumpChess(fen);
       child.move(move);
 
-      // negamax from child's perspective → negate → current-player perspective
-      const negaScore = -alphaBeta(child, d - 1, -Infinity, Infinity, 1, settings.useQSearch);
-      // Convert to white-perspective absolute score
-      const absScore  = isWhite ? negaScore : -negaScore;
+      // Pass -rootAlpha as beta: once child can refute to better than our current best,
+      // this move is pruned. This is standard alpha-beta at the root.
+      const score = -alphaBeta(child, d - 1, -Infinity, -rootAlpha, 1, settings.useQSearch);
 
       // Add noise for lower difficulties (makes choices intentionally suboptimal)
       const jitter   = settings.randomness > 0 ? (Math.random() - 0.5) * settings.randomness : 0;
-      const adjusted = isWhite ? absScore + jitter : absScore - jitter;
+      const adjusted = score + jitter;
 
-      if (isWhite ? adjusted > iterBestScore : adjusted < iterBestScore) {
+      if (adjusted > iterBestScore) {
         iterBestScore = adjusted;
         iterBest      = move;
       }
+      // Update pruning bound with raw (non-jittered) score
+      if (score > rootAlpha) rootAlpha = score;
     }
 
-    if (iterBest) {
+    // Only commit a fully-completed iteration. A partial result (timed out mid-loop)
+    // is unreliable because good moves at the end of the list weren't searched.
+    if (!timedOut && iterBest) {
       bestMove   = iterBest;
       bestScore  = iterBestScore;
       finalDepth = d;
+      // Cache this iteration's best move in TT so the next depth orders it first.
+      ttStore(fen, d, rootAlpha, TT_EXACT, iterBest.from + iterBest.to);
     }
   }
 
