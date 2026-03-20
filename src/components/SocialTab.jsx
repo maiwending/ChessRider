@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -115,6 +116,12 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
     );
     return onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Mark as read whenever messages update
+      if (currentUser && db) {
+        setDoc(doc(db, 'dms', chatId), {
+          [`lastReadAt_${currentUser.uid}`]: serverTimestamp()
+        }, { merge: true }).catch(() => {});
+      }
     });
   }, [chatId]);
 
@@ -143,6 +150,11 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
         senderName: currentUserName,
         createdAt: serverTimestamp()
       });
+      // Update parent doc: lastMessageAt for unread tracking, lastReadAt for sender
+      setDoc(doc(db, 'dms', chatId), {
+        lastMessageAt: serverTimestamp(),
+        [`lastReadAt_${currentUser.uid}`]: serverTimestamp()
+      }, { merge: true }).catch(() => {});
     } finally {
       setSending(false);
     }
@@ -195,9 +207,10 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
 
 // ─── Friends Section ──────────────────────────────────────────────────────────
 
-function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick }) {
+function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick, onChallengeFriend }) {
   const [outgoing, setOutgoing] = useState([]);
   const [incoming, setIncoming] = useState([]);
+  const [presence, setPresence] = useState({});
 
   useEffect(() => {
     if (!firebaseEnabled || !db || !currentUser) return;
@@ -213,14 +226,39 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick 
   }, [currentUser]);
 
   const friends = [
-    ...outgoing.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.to, name: r.toName })),
-    ...incoming.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.from, name: r.fromName }))
+    ...outgoing.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.to, name: r.toName, reqId: r.id })),
+    ...incoming.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.from, name: r.fromName, reqId: r.id }))
   ];
   const pendingIn = incoming.filter((r) => r.status === 'pending');
+
+  // Subscribe to online presence for each friend
+  const friendUidKey = friends.map((f) => f.uid).sort().join(',');
+  useEffect(() => {
+    if (!firebaseEnabled || !db || friends.length === 0) return;
+    const unsubs = friends.map((f) =>
+      onSnapshot(doc(db, 'users', f.uid), (snap) => {
+        if (snap.exists()) {
+          setPresence((prev) => ({ ...prev, [f.uid]: Boolean(snap.data().online) }));
+        }
+      })
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [friendUidKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const acceptRequest = async (reqId) => {
     if (!db) return;
     await updateDoc(doc(db, 'friend_requests', reqId), { status: 'accepted' });
+  };
+
+  const declineRequest = async (reqId) => {
+    if (!db) return;
+    await deleteDoc(doc(db, 'friend_requests', reqId));
+  };
+
+  const removeFriend = async (reqId, name) => {
+    if (!db) return;
+    if (!window.confirm(`Remove ${name} from friends?`)) return;
+    await deleteDoc(doc(db, 'friend_requests', reqId));
   };
 
   const getChatId = (uid) => [currentUser.uid, uid].sort().join('_');
@@ -234,9 +272,14 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick 
           {pendingIn.map((req) => (
             <div key={req.id} className="friend-request-item">
               <span className="friend-request-name">{req.fromName || 'Player'}</span>
-              <button className="btn btn-primary" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }} onClick={() => acceptRequest(req.id)}>
-                Accept
-              </button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button className="btn btn-primary" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }} onClick={() => acceptRequest(req.id)}>
+                  Accept
+                </button>
+                <button className="btn btn-ghost" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }} onClick={() => declineRequest(req.id)}>
+                  Decline
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -246,16 +289,38 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick 
       )}
       {friends.map((f) => (
         <div key={f.uid} className="friend-item">
+          <span
+            className={`presence-dot${presence[f.uid] ? ' presence-dot--online' : ''}`}
+            title={presence[f.uid] ? 'Online' : 'Offline'}
+          />
           <button className="friend-name-btn" onClick={() => onPlayerClick({ id: f.uid })}>
             {f.name || 'Player'}
           </button>
-          <button
-            className="btn btn-ghost"
-            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-            onClick={() => onOpenDm({ chatId: getChatId(f.uid), partnerUid: f.uid, partnerName: f.name || 'Player' })}
-          >
-            Message
-          </button>
+          <div className="friend-actions">
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+              onClick={() => onOpenDm({ chatId: getChatId(f.uid), partnerUid: f.uid, partnerName: f.name || 'Player' })}
+            >
+              Message
+            </button>
+            {onChallengeFriend && (
+              <button
+                className="btn btn-primary"
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                onClick={() => onChallengeFriend(f.uid, f.name || 'Player')}
+              >
+                Challenge
+              </button>
+            )}
+            <button
+              className="btn btn-ghost friend-remove-btn"
+              onClick={() => removeFriend(f.reqId, f.name || 'Player')}
+              title="Remove friend"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       ))}
     </div>
@@ -264,12 +329,22 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick 
 
 // ─── Main Social Tab ──────────────────────────────────────────────────────────
 
-export default function SocialTab({ currentUser, currentUserName, currentUserPhotoURL, onPlayerClick, pendingDm, onPendingDmHandled }) {
+export default function SocialTab({
+  currentUser,
+  currentUserName,
+  currentUserPhotoURL,
+  onPlayerClick,
+  pendingDm,
+  onPendingDmHandled,
+  onChallengeFriend
+}) {
   const [activeDm, setActiveDm] = useState(null);
+  const [subTab, setSubTab] = useState('lobby');
 
   useEffect(() => {
     if (pendingDm) {
       setActiveDm(pendingDm);
+      setSubTab('friends');
       onPendingDmHandled?.();
     }
   }, [pendingDm]);
@@ -286,17 +361,36 @@ export default function SocialTab({ currentUser, currentUserName, currentUserPho
         />
       ) : (
         <>
-          <AnnouncementsSection
-            currentUser={currentUser}
-            currentUserName={currentUserName}
-            currentUserPhotoURL={currentUserPhotoURL}
-          />
-          <FriendsSection
-            currentUser={currentUser}
-            currentUserName={currentUserName}
-            onOpenDm={setActiveDm}
-            onPlayerClick={onPlayerClick}
-          />
+          <div className="social-subtabs">
+            <button
+              className={`social-subtab-btn${subTab === 'lobby' ? ' active' : ''}`}
+              onClick={() => setSubTab('lobby')}
+            >
+              Lobby
+            </button>
+            <button
+              className={`social-subtab-btn${subTab === 'friends' ? ' active' : ''}`}
+              onClick={() => setSubTab('friends')}
+            >
+              Friends
+            </button>
+          </div>
+          {subTab === 'lobby' && (
+            <AnnouncementsSection
+              currentUser={currentUser}
+              currentUserName={currentUserName}
+              currentUserPhotoURL={currentUserPhotoURL}
+            />
+          )}
+          {subTab === 'friends' && (
+            <FriendsSection
+              currentUser={currentUser}
+              currentUserName={currentUserName}
+              onOpenDm={setActiveDm}
+              onPlayerClick={onPlayerClick}
+              onChallengeFriend={onChallengeFriend}
+            />
+          )}
         </>
       )}
     </div>

@@ -51,6 +51,7 @@ export function AuthProvider({ children }) {
     }
 
     let unsubscribe = null;
+    let unloadCleanup = null;
     let active = true;
 
     const setupProfile = async () => {
@@ -95,7 +96,20 @@ export function AuthProvider({ children }) {
           await setDoc(profileRef, patch, { merge: true });
         }
 
+        // Mark user as online
+        await setDoc(profileRef, { online: true, lastSeen: serverTimestamp() }, { merge: true });
+
         if (!active) return;
+
+        // Mark offline on tab close (attached after active check so ref is accessible in cleanup)
+        const handleUnload = () => {
+          setDoc(profileRef, { online: false, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+        };
+        window.addEventListener('beforeunload', handleUnload);
+        // Store cleanup handle on the closure so cleanup() can remove it
+        // eslint-disable-next-line no-use-before-define
+        unloadCleanup = () => window.removeEventListener('beforeunload', handleUnload);
+
         unsubscribe = onSnapshot(profileRef, (docSnap) => {
           if (!docSnap.exists()) {
             setProfile(null);
@@ -119,6 +133,11 @@ export function AuthProvider({ children }) {
     return () => {
       active = false;
       if (unsubscribe) unsubscribe();
+      if (unloadCleanup) unloadCleanup();
+      // Mark offline when signing out / user changes
+      if (user && db) {
+        setDoc(doc(db, 'users', user.uid), { online: false, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+      }
     };
   }, [user]);
 
@@ -141,8 +160,11 @@ export function AuthProvider({ children }) {
         if (!firebaseEnabled || !auth) return firebaseNotReadyError();
         return firebaseSignInAnonymously(auth);
       },
-      signOut: () => {
+      signOut: async () => {
         if (!firebaseEnabled || !auth) return Promise.resolve();
+        if (user && db) {
+          await setDoc(doc(db, 'users', user.uid), { online: false, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+        }
         return firebaseSignOut(auth);
       }
     };

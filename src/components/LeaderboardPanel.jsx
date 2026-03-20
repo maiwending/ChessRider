@@ -45,6 +45,10 @@ export default function LeaderboardPanel({ currentUser, onPlayerClick }) {
               <span className="lb-name">{p.displayName || 'Player'}</span>
               <span className="lb-rating">{p.rating ?? 1200}</span>
             </div>
+            <span
+              className={`presence-dot${p.online ? ' presence-dot--online' : ''}`}
+              title={p.online ? 'Online' : 'Offline'}
+            />
           </button>
         ))}
       </div>

@@ -1591,3 +1591,214 @@
   color: var(--accent, #e88c3a);
   text-decoration: underline;
 }
+
+.friend-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.friend-remove-btn {
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.75rem !important;
+  color: var(--text-dim) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  line-height: 1;
+}
+
+.friend-remove-btn:hover {
+  color: #e88 !important;
+  background: rgba(204,51,51,0.12) !important;
+}
+
+/* ─── Presence Dot ─── */
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim, #666);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.presence-dot--online {
+  background: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.6);
+}
+
+/* ─── Social Sub-tabs ─── */
+.social-subtabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.social-subtab-btn {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.social-subtab-btn:hover {
+  color: var(--text-bright);
+  background: rgba(255,255,255,0.05);
+}
+
+.social-subtab-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(98,153,36,0.08);
+}
+
+/* ─── Unread Badge ─── */
+.tab-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-badge {
+  position: absolute;
+  top: -5px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #e53935;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ─── Challenge Toast ─── */
+.challenge-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(98,153,36,0.12);
+  border: 1px solid rgba(98,153,36,0.4);
+  width: 100%;
+  max-width: 560px;
+  flex-wrap: wrap;
+}
+
+.challenge-toast-text {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-bright);
+}
+
+.challenge-toast-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ─── Profile W/L/D ─── */
+.profile-wld {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.wld-item {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.wld-win  { color: #4caf50; }
+.wld-loss { color: #e57373; }
+.wld-draw { color: var(--text-dim); }
+
+.wld-sep {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+/* ─── Profile Game History ─── */
+.profile-history {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+
+.profile-history-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.82rem;
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-result {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  text-align: center;
+}
+
+.result-win  { background: rgba(76,175,80,0.18);  color: #4caf50; }
+.result-loss { background: rgba(229,115,115,0.18); color: #e57373; }
+.result-draw { background: rgba(255,255,255,0.08); color: var(--text-dim); }
+
+.history-opponent {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-delta {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.delta-pos { color: #4caf50; }
+.delta-neg { color: #e57373; }
+
+.history-date {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ─── Leaderboard presence dot ─── */
+.lb-row .presence-dot {
+  flex-shrink: 0;
+}

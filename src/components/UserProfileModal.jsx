@@ -5,6 +5,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
   serverTimestamp,
   setDoc,
@@ -39,6 +40,8 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
   const [saving, setSaving] = useState(false);
   const [friendStatus, setFriendStatus] = useState(null); // null | 'pending_sent' | 'pending_received' | 'accepted'
   const [friendReqId, setFriendReqId] = useState(null);
+  const [gameHistory, setGameHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const isOwn = currentUser?.uid === profileUid;
 
@@ -49,6 +52,42 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
       if (snap.exists()) setProfile({ id: snap.id, ...snap.data() });
       setLoading(false);
     });
+  }, [profileUid]);
+
+  useEffect(() => {
+    if (!firebaseEnabled || !db || !profileUid) return;
+    setLoadingHistory(true);
+    const fetchHistory = async () => {
+      try {
+        // Fetch separately and sort client-side to avoid composite index requirement
+        const [whiteSnap, blackSnap] = await Promise.all([
+          getDocs(query(
+            collection(db, 'games'),
+            where('whiteId', '==', profileUid),
+            where('status', 'in', ['completed', 'draw', 'abandoned']),
+            limit(20)
+          )),
+          getDocs(query(
+            collection(db, 'games'),
+            where('blackId', '==', profileUid),
+            where('status', 'in', ['completed', 'draw', 'abandoned']),
+            limit(20)
+          ))
+        ]);
+        const games = [
+          ...whiteSnap.docs.map((d) => ({ id: d.id, side: 'w', ...d.data() })),
+          ...blackSnap.docs.map((d) => ({ id: d.id, side: 'b', ...d.data() }))
+        ]
+          .sort((a, b) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0))
+          .slice(0, 10);
+        setGameHistory(games);
+      } catch {
+        setGameHistory([]);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+    fetchHistory();
   }, [profileUid]);
 
   useEffect(() => {
@@ -142,6 +181,13 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
                 <h2 className="profile-name">{profile.displayName || 'Player'}</h2>
                 <div className="profile-rating-badge">{profile.rating ?? 1200} Elo</div>
                 {profile.isAnonymous && <span className="profile-anon-tag">Anonymous</span>}
+                <div className="profile-wld">
+                  <span className="wld-item wld-win">{profile.wins ?? 0}W</span>
+                  <span className="wld-sep">/</span>
+                  <span className="wld-item wld-loss">{profile.losses ?? 0}L</span>
+                  <span className="wld-sep">/</span>
+                  <span className="wld-item wld-draw">{profile.draws ?? 0}D</span>
+                </div>
               </div>
             </div>
             {profile.introduction ? (
@@ -174,6 +220,42 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
                   </button>
                 </>
               )}
+            </div>
+
+            {/* Game history */}
+            <div className="profile-history">
+              <h4 className="profile-history-title">Recent Games</h4>
+              {loadingHistory && <p className="muted">Loading...</p>}
+              {!loadingHistory && gameHistory.length === 0 && (
+                <p className="muted">No completed games yet.</p>
+              )}
+              {gameHistory.map((g) => {
+                const isWhite = g.whiteId === profileUid;
+                const opponent = isWhite ? (g.blackName || 'Opponent') : (g.whiteName || 'Opponent');
+                const ratingBefore = isWhite ? (g.whiteRating ?? 1200) : (g.blackRating ?? 1200);
+                const ratingAfter = isWhite ? g.whiteRatingAfter : g.blackRatingAfter;
+                const delta = ratingAfter != null ? ratingAfter - ratingBefore : null;
+                let resultLabel = 'Draw';
+                let resultClass = 'result-draw';
+                if (g.winner) {
+                  const won = (g.winner === 'w' && isWhite) || (g.winner === 'b' && !isWhite);
+                  resultLabel = won ? 'Win' : 'Loss';
+                  resultClass = won ? 'result-win' : 'result-loss';
+                }
+                const date = g.updatedAt?.toDate?.()?.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                return (
+                  <div key={g.id} className="history-row">
+                    <span className={`history-result ${resultClass}`}>{resultLabel}</span>
+                    <span className="history-opponent">vs {opponent}</span>
+                    {delta != null && (
+                      <span className={`history-delta ${delta >= 0 ? 'delta-pos' : 'delta-neg'}`}>
+                        {delta >= 0 ? '+' : ''}{delta}
+                      </span>
+                    )}
+                    {date && <span className="history-date">{date}</span>}
+                  </div>
+                );
+              })}
             </div>
           </>
         )}

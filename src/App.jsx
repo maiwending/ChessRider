@@ -6,6 +6,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   query,
@@ -113,6 +114,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('play');
   const [profileModalUid, setProfileModalUid] = useState(null);
   const [pendingDm, setPendingDm] = useState(null);
+  const [unreadDmCount, setUnreadDmCount] = useState(0);
+  const [incomingChallenge, setIncomingChallenge] = useState(null);
   const [moveTimestamps, setMoveTimestamps] = useState([{ white: 0, black: 0 }]);
   const [currentMoveStartTime, setCurrentMoveStartTime] = useState(Date.now());
   const lastAiFenRef = useRef(null);
@@ -189,6 +192,35 @@ export default function App() {
       setMatchStatus('idle');
       setMatchError('');
     }
+  }, [user]);
+
+  // ── Unread DM badge ──
+  useEffect(() => {
+    if (!user || !firebaseEnabled || !db) { setUnreadDmCount(0); return; }
+    const q = query(collection(db, 'dms'), where('participants', 'array-contains', user.uid));
+    return onSnapshot(q, (snap) => {
+      let count = 0;
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const lastMsg = data.lastMessageAt;
+        const lastRead = data[`lastReadAt_${user.uid}`];
+        if (lastMsg && (!lastRead || lastMsg.toMillis() > lastRead.toMillis())) count++;
+      });
+      setUnreadDmCount(count);
+    });
+  }, [user]);
+
+  // ── Incoming game challenges ──
+  useEffect(() => {
+    if (!user || !firebaseEnabled || !db) return;
+    const q = query(
+      collection(db, 'game_challenges'),
+      where('to', '==', user.uid),
+      where('status', '==', 'pending')
+    );
+    return onSnapshot(q, (snap) => {
+      setIncomingChallenge(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+    });
   }, [user]);
 
   useEffect(() => {
@@ -473,6 +505,9 @@ export default function App() {
               uid: data.whiteId,
               displayName: data.whiteName || 'White',
               rating: whiteRatingAfter,
+              wins: increment(whiteScore === 1 ? 1 : 0),
+              losses: increment(whiteScore === 0 ? 1 : 0),
+              draws: increment(whiteScore === 0.5 ? 1 : 0),
               updatedAt: serverTimestamp()
             },
             { merge: true }
@@ -483,6 +518,9 @@ export default function App() {
               uid: data.blackId,
               displayName: data.blackName || 'Black',
               rating: blackRatingAfter,
+              wins: increment(blackScore === 1 ? 1 : 0),
+              losses: increment(blackScore === 0 ? 1 : 0),
+              draws: increment(blackScore === 0.5 ? 1 : 0),
               updatedAt: serverTimestamp()
             },
             { merge: true }
@@ -674,6 +712,59 @@ export default function App() {
     return Math.round(playerRating + kFactor * (score - expected));
   };
 
+  const handleChallengeFriend = async (friendUid, friendName) => {
+    if (!user || !firebaseEnabled || !db) return;
+    setMatchError('');
+    try {
+      const newGame = new KnightJumpChess();
+      const gameRef = await addDoc(collection(db, GAMES_COLLECTION), {
+        rule: RULE_ID,
+        status: 'waiting',
+        whiteId: user.uid,
+        whiteName: displayName,
+        whiteRating: rating,
+        whiteReady: false,
+        blackReady: false,
+        blackId: null,
+        blackName: null,
+        blackRating: null,
+        fen: newGame.fen(),
+        moveHistory: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await addDoc(collection(db, 'game_challenges'), {
+        from: user.uid,
+        fromName: displayName,
+        to: friendUid,
+        toName: friendName,
+        gameId: gameRef.id,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+      setGameId(gameRef.id);
+      setMatchStatus('waiting');
+      setActiveTab('play');
+    } catch (error) {
+      setMatchError(error.message || 'Failed to send challenge');
+    }
+  };
+
+  const acceptChallenge = async () => {
+    if (!incomingChallenge || !user || !db) return;
+    try {
+      await joinCustomGame(incomingChallenge.gameId);
+      await updateDoc(doc(db, 'game_challenges', incomingChallenge.id), { status: 'accepted' });
+    } catch (error) {
+      setMatchError(error.message || 'Failed to accept challenge');
+    }
+  };
+
+  const declineChallenge = async () => {
+    if (!incomingChallenge || !db) return;
+    await deleteDoc(doc(db, 'game_challenges', incomingChallenge.id));
+  };
+
   const cancelMatchmaking = async () => {
     if (!gameId || !gameData) return;
     try {
@@ -723,12 +814,22 @@ export default function App() {
             whiteRatingAfter = calculateElo(data.whiteRating ?? 1200, data.blackRating ?? 1200, whiteScore);
             blackRatingAfter = calculateElo(data.blackRating ?? 1200, data.whiteRating ?? 1200, blackScore);
 
+            const wScore = winnerColor === 'w' ? 1 : 0;
+            const bScore = winnerColor === 'b' ? 1 : 0;
             tx.set(doc(db, 'users', data.whiteId), {
-              rating: whiteRatingAfter, updatedAt: serverTimestamp()
+              rating: whiteRatingAfter,
+              wins: increment(wScore === 1 ? 1 : 0),
+              losses: increment(wScore === 0 ? 1 : 0),
+              draws: increment(0),
+              updatedAt: serverTimestamp()
             }, { merge: true });
 
             tx.set(doc(db, 'users', data.blackId), {
-              rating: blackRatingAfter, updatedAt: serverTimestamp()
+              rating: blackRatingAfter,
+              wins: increment(bScore === 1 ? 1 : 0),
+              losses: increment(bScore === 0 ? 1 : 0),
+              draws: increment(0),
+              updatedAt: serverTimestamp()
             }, { merge: true });
           }
 
@@ -896,6 +997,19 @@ export default function App() {
             )}
           </div>
 
+          {/* Challenge toast */}
+          {incomingChallenge && !isOnline && (
+            <div className="challenge-toast">
+              <p className="challenge-toast-text">
+                <strong>{incomingChallenge.fromName}</strong> challenged you to a game!
+              </p>
+              <div className="challenge-toast-actions">
+                <button className="btn btn-primary" style={{ padding: '0.3rem 0.9rem', fontSize: '0.82rem' }} onClick={acceptChallenge}>Accept</button>
+                <button className="btn btn-ghost" style={{ padding: '0.3rem 0.9rem', fontSize: '0.82rem' }} onClick={declineChallenge}>Decline</button>
+              </div>
+            </div>
+          )}
+
           {/* Alerts */}
           {game.getWinnerByKingCapture() && (
             <div className="victory-banner">
@@ -1017,14 +1131,17 @@ export default function App() {
               { key: 'moves', icon: '☰', label: 'Moves' },
               { key: 'games', icon: '⚔', label: 'Games' },
               { key: 'settings', icon: '⚙', label: 'Settings' },
-              { key: 'social', icon: '👥', label: 'Social' },
+              { key: 'social', icon: '👥', label: 'Social', badge: unreadDmCount },
             ].map((tab) => (
               <button
                 key={tab.key}
                 className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.key)}
               >
-                <span className="tab-icon">{tab.icon}</span>
+                <span className="tab-icon-wrap">
+                  <span className="tab-icon">{tab.icon}</span>
+                  {tab.badge > 0 && <span className="tab-badge">{tab.badge}</span>}
+                </span>
                 <span className="tab-label">{tab.label}</span>
               </button>
             ))}
@@ -1260,6 +1377,7 @@ export default function App() {
                 onPlayerClick={(p) => setProfileModalUid(p.id)}
                 pendingDm={pendingDm}
                 onPendingDmHandled={() => setPendingDm(null)}
+                onChallengeFriend={handleChallengeFriend}
               />
             )}
 
