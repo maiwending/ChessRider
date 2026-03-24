@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   increment,
   limit,
@@ -12,6 +13,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where
 } from 'firebase/firestore';
@@ -29,13 +31,28 @@ const GAMES_COLLECTION = 'games';
 const RULE_ID = 'chessrider';
 const AI_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard', 'expert'];
 
-const BOT_FIRST_NAMES = ['Alex','Jordan','Morgan','Casey','Riley','Taylor','Avery','Quinn','Sage','Drew','Blake','Reese','Skyler','Cameron','Dakota','Hayden','Parker','Emery','Finley','Rowan'];
-const BOT_LAST_NAMES = ['Kim','Chen','Park','Lee','Wang','Singh','Patel','Rivera','Cruz','Reyes','Brooks','Hayes','Wells','Grant','Webb','Bell','Shaw','Cole','Hunt','Ross'];
-const randomBotName = () => {
-  const first = BOT_FIRST_NAMES[Math.floor(Math.random() * BOT_FIRST_NAMES.length)];
-  const last = BOT_LAST_NAMES[Math.floor(Math.random() * BOT_LAST_NAMES.length)];
-  return `${first} ${last}`;
-};
+const BOT_POOL = [
+  { uid: 'bot_alex_kim',      name: 'Alex Kim' },
+  { uid: 'bot_jordan_park',   name: 'Jordan Park' },
+  { uid: 'bot_morgan_chen',   name: 'Morgan Chen' },
+  { uid: 'bot_casey_lee',     name: 'Casey Lee' },
+  { uid: 'bot_riley_wang',    name: 'Riley Wang' },
+  { uid: 'bot_taylor_singh',  name: 'Taylor Singh' },
+  { uid: 'bot_avery_patel',   name: 'Avery Patel' },
+  { uid: 'bot_quinn_rivera',  name: 'Quinn Rivera' },
+  { uid: 'bot_sage_brooks',   name: 'Sage Brooks' },
+  { uid: 'bot_drew_hayes',    name: 'Drew Hayes' },
+  { uid: 'bot_blake_ross',    name: 'Blake Ross' },
+  { uid: 'bot_reese_cole',    name: 'Reese Cole' },
+  { uid: 'bot_skyler_grant',  name: 'Skyler Grant' },
+  { uid: 'bot_cameron_webb',  name: 'Cameron Webb' },
+  { uid: 'bot_dakota_bell',   name: 'Dakota Bell' },
+  { uid: 'bot_hayden_shaw',   name: 'Hayden Shaw' },
+  { uid: 'bot_parker_wells',  name: 'Parker Wells' },
+  { uid: 'bot_emery_hunt',    name: 'Emery Hunt' },
+  { uid: 'bot_finley_cruz',   name: 'Finley Cruz' },
+  { uid: 'bot_rowan_reyes',   name: 'Rowan Reyes' },
+];
 
 const TIME_CONTROLS = [
   { label: '1 min',  seconds: 60 },
@@ -426,14 +443,35 @@ export default function App() {
 
   // ── Sync bot-online flag for AI worker callback ──
   useEffect(() => {
-    isBotOnlineGameRef.current = isOnline && gameData?.blackId === 'bot';
+    isBotOnlineGameRef.current = isOnline && gameData?.blackId?.startsWith('bot_');
   }, [isOnline, gameData?.blackId]);
 
   // ── Auto-add bot opponent after 1 minute of waiting ──
   const addBotOpponent = useCallback(async () => {
     if (!gameId || !user || !db) return;
-    const gameRef = doc(db, GAMES_COLLECTION, gameId);
     try {
+      // Pick a random bot and ensure its profile exists
+      const bot = BOT_POOL[Math.floor(Math.random() * BOT_POOL.length)];
+      const botRef = doc(db, 'users', bot.uid);
+      const botSnap = await getDoc(botRef);
+      let botRating = 1200;
+      if (!botSnap.exists()) {
+        await setDoc(botRef, {
+          uid: bot.uid,
+          displayName: bot.name,
+          isBot: true,
+          rating: 1200,
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        botRating = botSnap.data().rating ?? 1200;
+      }
+
+      const gameRef = doc(db, GAMES_COLLECTION, gameId);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(gameRef);
         if (!snap.exists()) return;
@@ -441,9 +479,9 @@ export default function App() {
         if (data.whiteId !== user.uid) return;
         if (data.status !== 'waiting' || data.blackId !== null) return;
         tx.update(gameRef, {
-          blackId: 'bot',
-          blackName: randomBotName(),
-          blackRating: 1200,
+          blackId: bot.uid,
+          blackName: bot.name,
+          blackRating: botRating,
           blackReady: true,
           whiteReady: true,
           status: 'active',
@@ -457,7 +495,7 @@ export default function App() {
     } catch (error) {
       console.error('Failed to add bot opponent:', error);
     }
-  }, [gameId, user, aiDifficulty]);
+  }, [gameId, user]);
 
   useEffect(() => {
     if (!isOnline || !gameData || !user) return;
@@ -474,7 +512,7 @@ export default function App() {
   // ── Trigger AI move when it's the bot's turn in an online bot game ──
   useEffect(() => {
     if (!isOnline || !gameData || gameData.status !== 'active') return;
-    if (gameData.blackId !== 'bot') return;
+    if (!gameData.blackId?.startsWith('bot_')) return;
     if (!gameData.fen) return;
     const turn = gameData.fen.split(' ')[1];
     if (turn !== 'b') return;
@@ -734,7 +772,7 @@ export default function App() {
         const snap = await tx.get(gameRef);
         if (!snap.exists()) return;
         const data = snap.data();
-        if (data.status !== 'active' || data.blackId !== 'bot') return;
+        if (data.status !== 'active' || !data.blackId?.startsWith('bot_')) return;
         const gameCopy = new KnightJumpChess(data.fen);
         if (gameCopy.turn() !== 'b') return;
         const moveResult = gameCopy.move({ from: moveMsg.from, to: moveMsg.to, promotion: moveMsg.promotion || 'q' });
@@ -772,9 +810,12 @@ export default function App() {
         }
 
         let whiteRatingAfter = data.whiteRating ?? 1200;
+        let blackRatingAfter = data.blackRating ?? 1200;
         if (nextStatus === 'completed' || nextStatus === 'draw') {
           const whiteScore = winner === 'w' ? 1 : winner === 'b' ? 0 : 0.5;
+          const blackScore = 1 - whiteScore;
           whiteRatingAfter = calculateElo(data.whiteRating ?? 1200, data.blackRating ?? 1200, whiteScore);
+          blackRatingAfter = calculateElo(data.blackRating ?? 1200, data.whiteRating ?? 1200, blackScore);
           tx.set(doc(db, 'users', data.whiteId), {
             rating: whiteRatingAfter,
             wins: increment(whiteScore === 1 ? 1 : 0),
@@ -782,17 +823,24 @@ export default function App() {
             draws: increment(whiteScore === 0.5 ? 1 : 0),
             updatedAt: serverTimestamp()
           }, { merge: true });
+          tx.set(doc(db, 'users', data.blackId), {
+            rating: blackRatingAfter,
+            wins: increment(blackScore === 1 ? 1 : 0),
+            losses: increment(blackScore === 0 ? 1 : 0),
+            draws: increment(blackScore === 0.5 ? 1 : 0),
+            updatedAt: serverTimestamp()
+          }, { merge: true });
         }
 
         tx.update(gameRef, {
           fen: gameCopy.fen(),
           moveHistory: newHistory,
-          lastMove: { from: moveMsg.from, to: moveMsg.to, san: moveResult.san || null, by: 'bot' },
+          lastMove: { from: moveMsg.from, to: moveMsg.to, san: moveResult.san || null, by: data.blackId },
           status: nextStatus,
           result,
           winner,
           whiteRatingAfter: nextStatus === 'active' ? null : whiteRatingAfter,
-          blackRatingAfter: null,
+          blackRatingAfter: nextStatus === 'active' ? null : blackRatingAfter,
           blackTimeLeft: newBlackTimeLeft,
           lastMoveAt: serverTimestamp(),
           updatedAt: serverTimestamp()
