@@ -149,6 +149,10 @@ export default function App() {
   const lastAiFenRef = useRef(null);
   const aiRequestIdRef = useRef(0);
   const aiWorkerRef = useRef(null);
+  const isBotOnlineGameRef = useRef(false);
+  const botMovePendingRef = useRef(false);
+  const [pendingBotMove, setPendingBotMove] = useState(null);
+  const [botJoinCountdown, setBotJoinCountdown] = useState(null);
   const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'medium').toLowerCase();
   const envAiDifficulty = AI_DIFFICULTY_LEVELS.includes(rawAiDifficulty)
     ? rawAiDifficulty
@@ -337,6 +341,12 @@ export default function App() {
     worker.onmessage = (e) => {
       const msg = e.data;
       if (msg.type === 'result') {
+        if (isBotOnlineGameRef.current) {
+          // Bot online game: queue the move for Firestore submission
+          setPendingBotMove(msg);
+          setAiThinking(false);
+          return;
+        }
         // Apply the AI move
         setGame((prevGame) => {
           const gameCopy = new KnightJumpChess(prevGame.fen());
@@ -406,6 +416,83 @@ export default function App() {
       id: requestId,
     });
   }, [aiDifficulty]);
+
+  // ── Sync bot-online flag for AI worker callback ──
+  useEffect(() => {
+    isBotOnlineGameRef.current = isOnline && gameData?.blackId === 'bot';
+  }, [isOnline, gameData?.blackId]);
+
+  // ── Auto-add bot opponent after 1 minute of waiting ──
+  const addBotOpponent = useCallback(async () => {
+    if (!gameId || !user || !db) return;
+    const gameRef = doc(db, GAMES_COLLECTION, gameId);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(gameRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.whiteId !== user.uid) return;
+        if (data.status !== 'waiting' || data.blackId !== null) return;
+        tx.update(gameRef, {
+          blackId: 'bot',
+          blackName: `Guest-${Math.random().toString(36).slice(2, 8)}`,
+          blackRating: 1200,
+          blackReady: true,
+          whiteReady: true,
+          status: 'active',
+          startedAt: serverTimestamp(),
+          lastMoveAt: serverTimestamp(),
+          whiteTimeLeft: data.timeControl ?? DEFAULT_TIME_CONTROL,
+          blackTimeLeft: data.timeControl ?? DEFAULT_TIME_CONTROL,
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (error) {
+      console.error('Failed to add bot opponent:', error);
+    }
+  }, [gameId, user, aiDifficulty]);
+
+  useEffect(() => {
+    if (!isOnline || !gameData || !user) return;
+    if (gameData.status !== 'waiting') return;
+    if (gameData.whiteId !== user.uid) return;
+    if (gameData.blackId !== null) return;
+    const createdMs = gameData.createdAt?.toMillis?.();
+    if (!createdMs) return;
+    const delay = Math.max(0, 60000 - (Date.now() - createdMs));
+    const timer = setTimeout(addBotOpponent, delay);
+    return () => clearTimeout(timer);
+  }, [isOnline, gameData?.status, gameData?.whiteId, gameData?.blackId, gameData?.createdAt, user?.uid, addBotOpponent]);
+
+  // ── Bot join countdown display ──
+  useEffect(() => {
+    if (!isOnline || !gameData || gameData.status !== 'waiting' ||
+        gameData.whiteId !== user?.uid || gameData.blackId !== null) {
+      setBotJoinCountdown(null);
+      return;
+    }
+    const createdMs = gameData.createdAt?.toMillis?.();
+    if (!createdMs) return;
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((60000 - (Date.now() - createdMs)) / 1000));
+      setBotJoinCountdown(remaining);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [isOnline, gameData?.status, gameData?.whiteId, gameData?.blackId, gameData?.createdAt, user?.uid]);
+
+  // ── Trigger AI move when it's the bot's turn in an online bot game ──
+  useEffect(() => {
+    if (!isOnline || !gameData || gameData.status !== 'active') return;
+    if (gameData.blackId !== 'bot') return;
+    if (!gameData.fen) return;
+    const turn = gameData.fen.split(' ')[1];
+    if (turn !== 'b') return;
+    if (botMovePendingRef.current) return;
+    botMovePendingRef.current = true;
+    requestAiMove(gameData.fen, [], []);
+  }, [isOnline, gameData?.status, gameData?.blackId, gameData?.fen, requestAiMove]);
 
   // ── Game actions ──
   const resetPractice = () => {
@@ -579,7 +666,7 @@ export default function App() {
         let whiteRatingAfter = data.whiteRating ?? 1200;
         let blackRatingAfter = data.blackRating ?? 1200;
 
-        if ((nextStatus === 'completed' || nextStatus === 'draw') && data.whiteId && data.blackId) {
+        if ((nextStatus === 'completed' || nextStatus === 'draw') && data.whiteId && data.blackId && data.blackId !== 'bot') {
           const whiteScore = winner === 'w' ? 1 : winner === 'b' ? 0 : 0.5;
           const blackScore = winner === 'b' ? 1 : winner === 'w' ? 0 : 0.5;
 
@@ -649,6 +736,78 @@ export default function App() {
       setMovePending(false);
     }
   };
+
+  const handleBotOnlineMove = useCallback(async (moveMsg) => {
+    if (!gameId || !db) return;
+    const gameRef = doc(db, GAMES_COLLECTION, gameId);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(gameRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.status !== 'active' || data.blackId !== 'bot') return;
+        const gameCopy = new KnightJumpChess(data.fen);
+        if (gameCopy.turn() !== 'b') return;
+        const moveResult = gameCopy.move({ from: moveMsg.from, to: moveMsg.to, promotion: moveMsg.promotion || 'q' });
+        if (!moveResult) return;
+
+        const newHistory = [...(data.moveHistory || []), moveResult.san || `${moveMsg.from}-${moveMsg.to}`];
+
+        let newBlackTimeLeft = data.blackTimeLeft ?? null;
+        if (data.timeControl && data.lastMoveAt) {
+          const elapsed = Math.max(0, (Date.now() - data.lastMoveAt.toMillis()) / 1000);
+          newBlackTimeLeft = Math.max(0, (data.blackTimeLeft ?? data.timeControl) - elapsed);
+        }
+
+        let nextStatus = 'active';
+        let result = null;
+        let winner = null;
+
+        if (newBlackTimeLeft !== null && newBlackTimeLeft <= 0) {
+          nextStatus = 'completed'; winner = 'w'; result = 'White wins on time';
+        }
+
+        if (nextStatus === 'active') {
+          const fenBoard = gameCopy.fen().split(' ')[0];
+          if (!fenBoard.includes('K')) {
+            nextStatus = 'completed'; winner = 'b'; result = 'Black wins by king capture';
+          } else if (!fenBoard.includes('k')) {
+            nextStatus = 'completed'; winner = 'w'; result = 'White wins by king capture';
+          } else if (gameCopy.isCheckmateRider()) {
+            winner = gameCopy.turn() === 'w' ? 'b' : 'w';
+            nextStatus = 'completed';
+            result = `${formatTurn(winner)} wins by checkmate`;
+          } else if (gameCopy.isStalemateRider() || gameCopy.isDraw()) {
+            nextStatus = 'draw'; result = 'Draw';
+          }
+        }
+
+        tx.update(gameRef, {
+          fen: gameCopy.fen(),
+          moveHistory: newHistory,
+          lastMove: { from: moveMsg.from, to: moveMsg.to, san: moveResult.san || null, by: 'bot' },
+          status: nextStatus,
+          result,
+          winner,
+          whiteRatingAfter: null,
+          blackRatingAfter: null,
+          blackTimeLeft: newBlackTimeLeft,
+          lastMoveAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (error) {
+      console.error('Bot move error:', error);
+    } finally {
+      botMovePendingRef.current = false;
+    }
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!pendingBotMove) return;
+    setPendingBotMove(null);
+    handleBotOnlineMove(pendingBotMove);
+  }, [pendingBotMove, handleBotOnlineMove]);
 
   const startMatchmaking = async () => {
     if (!user) return;
@@ -832,7 +991,7 @@ export default function App() {
         const blackScore = 1 - whiteScore;
         let whiteRatingAfter = data.whiteRating ?? 1200;
         let blackRatingAfter = data.blackRating ?? 1200;
-        if (data.whiteId && data.blackId) {
+        if (data.whiteId && data.blackId && data.blackId !== 'bot') {
           whiteRatingAfter = calculateElo(data.whiteRating ?? 1200, data.blackRating ?? 1200, whiteScore);
           blackRatingAfter = calculateElo(data.blackRating ?? 1200, data.whiteRating ?? 1200, blackScore);
           tx.set(doc(db, 'users', data.whiteId), {
@@ -962,7 +1121,7 @@ export default function App() {
           let whiteRatingAfter = data.whiteRating ?? 1200;
           let blackRatingAfter = data.blackRating ?? 1200;
 
-          if (data.whiteId && data.blackId) {
+          if (data.whiteId && data.blackId && data.blackId !== 'bot') {
             const whiteScore = winnerColor === 'w' ? 1 : 0;
             const blackScore = winnerColor === 'b' ? 1 : 0;
 
@@ -1287,8 +1446,8 @@ export default function App() {
 
           {matchError && <p className="error-text">{matchError}</p>}
 
-          {/* AI thinking indicator */}
-          {aiThinking && (
+          {/* AI thinking indicator — hide when bot is playing as online opponent */}
+          {aiThinking && !isBotOnlineGameRef.current && (
             <div className="ai-thinking-indicator">
               <div className="thinking-spinner" />
               <span className="thinking-text">AI is thinking...</span>
@@ -1388,6 +1547,13 @@ export default function App() {
                           {readyStatus.self ? 'Unready' : 'Ready up'}
                         </button>
                         <p className="muted">Game starts when both players are ready.</p>
+                        {botJoinCountdown !== null && (
+                          <p className="muted" style={{ marginTop: '8px', fontSize: '0.85em' }}>
+                            {botJoinCountdown > 0
+                              ? `Finding opponent... ${botJoinCountdown}s`
+                              : 'Connecting opponent...'}
+                          </p>
+                        )}
                       </div>
                     )}
                     {/* Live clocks in sidebar */}
