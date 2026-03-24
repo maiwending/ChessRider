@@ -468,7 +468,12 @@ export default function App() {
           updatedAt: serverTimestamp()
         });
       } else {
-        botRating = botSnap.data().rating ?? 1200;
+        const botData = botSnap.data();
+        botRating = botData.rating ?? 1200;
+        // Ensure displayName is always set (fixes any orphan documents)
+        if (!botData.displayName) {
+          await setDoc(botRef, { displayName: bot.name, uid: bot.uid, isBot: true, updatedAt: serverTimestamp() }, { merge: true });
+        }
       }
 
       const gameRef = doc(db, GAMES_COLLECTION, gameId);
@@ -1048,6 +1053,13 @@ export default function App() {
             rating: whiteRatingAfter,
             wins: increment(whiteScore === 1 ? 1 : 0),
             losses: increment(whiteScore === 0 ? 1 : 0),
+            draws: increment(0),
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+          tx.set(doc(db, 'users', data.blackId), {
+            rating: blackRatingAfter,
+            wins: increment(blackScore === 1 ? 1 : 0),
+            losses: increment(blackScore === 0 ? 1 : 0),
             draws: increment(0),
             updatedAt: serverTimestamp()
           }, { merge: true });
