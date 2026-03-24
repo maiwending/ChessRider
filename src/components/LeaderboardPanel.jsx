@@ -21,7 +21,7 @@ export default function LeaderboardPanel({ currentUser, onPlayerClick, embedded 
   return (
     <aside className="leaderboard-panel" data-embedded={embedded ? 'true' : undefined}>
       <div className="leaderboard-header">
-        <h3 className="leaderboard-title">Top 100</h3>
+        <h3 className="leaderboard-title">Rank</h3>
       </div>
       <div className="leaderboard-list">
         {players.length === 0 && (

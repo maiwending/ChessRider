@@ -1451,7 +1451,7 @@ export default function App() {
               { key: 'moves',    icon: '☰',  label: 'Moves' },
               { key: 'games',    icon: '⚔',  label: 'Games' },
               { key: 'social',   icon: '👥', label: 'Social', badge: unreadDmCount },
-              { key: 'rankings', icon: '🏆', label: 'Top 100' },
+              { key: 'rankings', icon: '🏆', label: 'Rank' },
               { key: 'settings', icon: '⚙',  label: 'Settings' },
             ].map((tab) => (
               <button
