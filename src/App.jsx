@@ -62,7 +62,7 @@ const TIME_CONTROLS = [
   { label: '15 min', seconds: 900 },
   { label: '30 min', seconds: 1800 },
 ];
-const DEFAULT_TIME_CONTROL = 600;
+const DEFAULT_TIME_CONTROL = 300;
 
 const createNewGame = () => new KnightJumpChess();
 
