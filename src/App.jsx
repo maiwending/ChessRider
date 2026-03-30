@@ -1322,7 +1322,7 @@ export default function App() {
           title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           style={{ fontSize: '1.1rem', padding: '5px 10px' }}
         >
-          {darkMode ? '☀' : '🌙'}
+          {darkMode ? '☀ Light' : '🌙 Dark'}
         </button>
         <div className="auth-panel">
           {!authReady ? (
