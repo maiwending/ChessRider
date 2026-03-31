@@ -219,6 +219,61 @@
 .learn-legend--adj    { color: #a3d65c; }
 .learn-legend--knm    { color: #6aafeb; }
 
+.learn-aura-indicator {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(98,153,36,0.15) 0%, rgba(98,153,36,0.05) 100%);
+  border: 1px solid rgba(98,153,36,0.24);
+}
+
+.learn-aura-indicator-piece {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.85rem;
+  color: var(--text-bright);
+  background: radial-gradient(circle, rgba(206,234,134,0.34) 0%, rgba(98,153,36,0.18) 48%, rgba(255,255,255,0.05) 74%);
+  box-shadow: 0 0 18px rgba(98,153,36,0.18);
+}
+
+.learn-aura-indicator-mark {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(44,73,15,0.92);
+  color: #efffc4;
+  font-size: 0.72rem;
+  box-shadow: 0 0 0 1px rgba(226,255,159,0.35), 0 0 8px rgba(160,214,68,0.35);
+}
+
+.learn-aura-indicator-copy strong {
+  display: block;
+  color: var(--text-bright);
+  font-size: 0.88rem;
+  margin-bottom: 4px;
+}
+
+.learn-aura-indicator-copy p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
 /* ─── Jump Demos ─── */
 .learn-jump-demo {
   display: flex;
@@ -404,6 +459,11 @@
     width: 34px;
     height: 34px;
     font-size: 1rem;
+  }
+
+  .learn-aura-indicator {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .learn-summary-grid {

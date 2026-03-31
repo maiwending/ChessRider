@@ -171,7 +171,9 @@ export default function App() {
   const [selectedTimeControl, setSelectedTimeControl] = useState(DEFAULT_TIME_CONTROL);
   const [clockWhite, setClockWhite] = useState(null);
   const [clockBlack, setClockBlack] = useState(null);
+  const [localResult, setLocalResult] = useState(null);
   const timeoutFiredRef = useRef(false);
+  const localResultRef = useRef(null);
   const lastAiFenRef = useRef(null);
   const aiRequestIdRef = useRef(0);
   const aiWorkerRef = useRef(null);
@@ -199,6 +201,10 @@ export default function App() {
     localStorage.setItem('cr_dark', darkMode ? 'true' : 'false');
   }, [darkMode]);
 
+  useEffect(() => {
+    localResultRef.current = localResult;
+  }, [localResult]);
+
   // Auto-flip board when playing as black
   useEffect(() => {
     if (playerColor === 'b') setFlipped(true);
@@ -215,8 +221,10 @@ export default function App() {
   // Online clock countdown
   useEffect(() => {
     if (!isOnline || !gameData || gameData.status !== 'active') {
-      setClockWhite(null);
-      setClockBlack(null);
+      if (isOnline) {
+        setClockWhite(null);
+        setClockBlack(null);
+      }
       return;
     }
     if (!gameData.timeControl) return;
@@ -248,6 +256,43 @@ export default function App() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameData?.status, gameData?.lastMoveAt, gameData?.whiteTimeLeft, gameData?.blackTimeLeft, gameData?.timeControl, isOnline, playerColor]);
+
+  // Local AI countdown clocks
+  useEffect(() => {
+    if (isOnline || !aiEnabled) {
+      if (!isOnline) {
+        setClockWhite(null);
+        setClockBlack(null);
+      }
+      return undefined;
+    }
+
+    const tick = () => {
+      const totals = moveTimestamps[moveTimestamps.length - 1] || { white: 0, black: 0 };
+      const elapsed = isGameOver() ? 0 : Math.max(0, (Date.now() - currentMoveStartTime) / 1000);
+      const turn = game.turn();
+      const whiteLeft = Math.max(0, selectedTimeControl - (totals.white || 0) - (turn === 'w' ? elapsed : 0));
+      const blackLeft = Math.max(0, selectedTimeControl - (totals.black || 0) - (turn === 'b' ? elapsed : 0));
+
+      setClockWhite(whiteLeft);
+      setClockBlack(blackLeft);
+
+      if (!localResultRef.current && !isGameOver()) {
+        if (whiteLeft <= 0) {
+          setLocalResult({ winner: 'b', text: 'Black wins on time' });
+          setAiThinking(false);
+        } else if (blackLeft <= 0) {
+          setLocalResult({ winner: 'w', text: 'White wins on time' });
+          setAiThinking(false);
+        }
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, aiEnabled, selectedTimeControl, moveTimestamps, currentMoveStartTime, game, localResult]);
 
   const opponentName = useMemo(() => {
     if (!gameData) return 'Opponent';
@@ -375,6 +420,10 @@ export default function App() {
         if (isBotOnlineGameRef.current) {
           // Bot online game: queue the move for Firestore submission
           setPendingBotMove(msg);
+          setAiThinking(false);
+          return;
+        }
+        if (localResultRef.current) {
           setAiThinking(false);
           return;
         }
@@ -544,6 +593,7 @@ export default function App() {
     setLastMove(null);
     setMoveTimestamps([{ white: 0, black: 0 }]);
     setCurrentMoveStartTime(Date.now());
+    setLocalResult(null);
   };
 
   const handleSquareClick = (square) => {
@@ -1238,6 +1288,7 @@ export default function App() {
 
   const gameStatusText = () => {
     if (!isOnline) {
+      if (localResult?.text) return localResult.text;
       const kingWinner = game.getWinnerByKingCapture();
       if (kingWinner) {
         return `${formatTurn(kingWinner)} wins by king capture`;
@@ -1258,7 +1309,7 @@ export default function App() {
   };
 
   const isGameOver = () => {
-    return game.getWinnerByKingCapture() || game.isCheckmateRider() || game.isStalemateRider();
+    return localResult || game.getWinnerByKingCapture() || game.isCheckmateRider() || game.isStalemateRider();
   };
 
   // ── Render helpers ──
@@ -1391,20 +1442,25 @@ export default function App() {
           )}
 
           {/* Alerts */}
-          {game.getWinnerByKingCapture() && (
+          {localResult?.text && (
+            <div className="victory-banner">
+              {localResult.text}
+            </div>
+          )}
+          {!localResult && game.getWinnerByKingCapture() && (
             <div className="victory-banner">
               {formatTurn(game.getWinnerByKingCapture())} wins by king capture
             </div>
           )}
-          {!game.getWinnerByKingCapture() && game.isCheckmateRider() && (
+          {!localResult && !game.getWinnerByKingCapture() && game.isCheckmateRider() && (
             <div className="victory-banner">
               Checkmate — {formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins
             </div>
           )}
-          {!game.getWinnerByKingCapture() && game.isStalemateRider() && (
+          {!localResult && !game.getWinnerByKingCapture() && game.isStalemateRider() && (
             <div className="victory-banner">Stalemate — Draw</div>
           )}
-          {inCheck && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
+          {inCheck && !localResult && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
             <div className="check-alert">Check!</div>
           )}
 
@@ -1424,14 +1480,9 @@ export default function App() {
                     </span>
                   )}
                 </div>
-                {isOnline && topClock != null && (
+                {((isOnline || (aiEnabled && !isOnline)) && topClock != null) && (
                   <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}${topClock <= 10 ? ' player-bar__clock--low' : ''}`}>
                     {formatClock(topClock)}
-                  </div>
-                )}
-                {aiEnabled && !isOnline && (
-                  <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}`}>
-                    {formatTime(moveTimestamps[moveTimestamps.length - 1]?.[flipped ? 'white' : 'black'] || 0)}
                   </div>
                 )}
               </div>
@@ -1467,14 +1518,9 @@ export default function App() {
                     </span>
                   )}
                 </div>
-                {isOnline && botClock != null && (
+                {((isOnline || (aiEnabled && !isOnline)) && botClock != null) && (
                   <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}${botClock <= 10 ? ' player-bar__clock--low' : ''}`}>
                     {formatClock(botClock)}
-                  </div>
-                )}
-                {aiEnabled && !isOnline && (
-                  <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}`}>
-                    {formatTime(moveTimestamps[moveTimestamps.length - 1]?.[flipped ? 'black' : 'white'] || 0)}
                   </div>
                 )}
               </div>

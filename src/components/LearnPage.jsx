@@ -108,6 +108,21 @@ export default function LearnPage({ onBack }) {
               </span>
             </div>
           </div>
+
+          <div className="learn-aura-indicator">
+            <div className="learn-aura-indicator-piece" aria-hidden="true">
+              ♖
+              <span className="learn-aura-indicator-mark">✦</span>
+            </div>
+            <div className="learn-aura-indicator-copy">
+              <strong>Board indicator</strong>
+              <p>
+                On the live board, an empowered piece gets a soft green glow and a small
+                <strong> ✦ mark</strong> so you can spot aura-enabled pieces at a glance.
+                Knights project the aura, but they do not gain an extra jump themselves.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
