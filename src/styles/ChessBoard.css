@@ -177,6 +177,27 @@
 }
 
 /* Pieces */
+.piece-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.piece-shell--aura::before {
+  content: '';
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(206, 234, 134, 0.34) 0%, rgba(98, 153, 36, 0.16) 42%, transparent 74%);
+  box-shadow: 0 0 14px rgba(98, 153, 36, 0.18);
+  z-index: 0;
+}
+
 .piece-image {
   width: 85%;
   height: 85%;
@@ -192,6 +213,16 @@
   filter: drop-shadow(0 3px 5px rgba(0,0,0,0.45));
 }
 
+.piece-shell--aura .piece-image {
+  transform: translateY(-1px) scale(1.035);
+  filter: drop-shadow(0 0 5px rgba(206, 234, 134, 0.5)) drop-shadow(0 2px 4px rgba(0,0,0,0.34));
+}
+
+.square:hover .piece-shell--aura .piece-image {
+  transform: translateY(-2px) scale(1.08);
+  filter: drop-shadow(0 0 7px rgba(216, 244, 148, 0.62)) drop-shadow(0 3px 5px rgba(0,0,0,0.42));
+}
+
 .piece {
   width: 80%;
   height: 80%;
@@ -204,6 +235,7 @@
   text-transform: uppercase;
   position: relative;
   z-index: 3;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
 }
 
 .piece--w {
@@ -216,6 +248,44 @@
   background: #333;
   color: #f0f0f0;
   box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.piece-shell--aura .piece {
+  transform: translateY(-1px) scale(1.035);
+}
+
+.piece-shell--aura .piece--w {
+  border-color: rgba(98, 153, 36, 0.72);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.4), 0 0 0 2px rgba(206, 234, 134, 0.35), 0 4px 10px rgba(70, 104, 22, 0.24);
+}
+
+.piece-shell--aura .piece--b {
+  border-color: rgba(216, 244, 148, 0.7);
+  box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 0 0 2px rgba(140, 192, 60, 0.34), 0 4px 10px rgba(0,0,0,0.34);
+}
+
+.square:hover .piece-shell--aura .piece {
+  transform: translateY(-2px) scale(1.08);
+}
+
+.piece-aura-mark {
+  position: absolute;
+  top: 12%;
+  right: 12%;
+  width: 18%;
+  height: 18%;
+  min-width: 11px;
+  min-height: 11px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(44, 73, 15, 0.92);
+  color: #efffc4;
+  font-size: clamp(8px, 1.45vmin, 12px);
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(226, 255, 159, 0.38), 0 0 10px rgba(160, 214, 68, 0.45);
+  text-shadow: 0 0 6px rgba(226, 255, 159, 0.6);
+  z-index: 4;
 }
 
 /* Coordinate labels */

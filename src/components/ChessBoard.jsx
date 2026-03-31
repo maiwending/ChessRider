@@ -62,6 +62,25 @@ export default function ChessBoard({
 
   const knightAuraSquares = getKnightAuraSquares();
 
+  const getAuraPieceSquares = () => {
+    if (!game) return new Set();
+
+    const auraPieceSquares = new Set();
+    for (const r of ranksBase) {
+      for (const f of filesBase) {
+        const sq = `${f}${r}`;
+        const piece = game.get(sq);
+        if (!piece || piece.type === 'n') continue;
+        if (game.isNearKnight(sq, piece.color)) {
+          auraPieceSquares.add(sq);
+        }
+      }
+    }
+    return auraPieceSquares;
+  };
+
+  const auraPieceSquares = getAuraPieceSquares();
+
   // Find king in check
   const getCheckSquare = () => {
     if (!game || !inCheck) return null;
@@ -95,6 +114,7 @@ export default function ChessBoard({
                 const isLastTo = lastMove && lastMove.to === square;
                 const isCheck = checkSquare === square;
                 const isAura = knightAuraSquares.has(square) && selectedSquare;
+                const isAuraPiece = auraPieceSquares.has(square);
 
                 const squareClass = [
                   'square',
@@ -118,17 +138,21 @@ export default function ChessBoard({
                     onClick={() => onSquareClick(square)}
                     aria-label={`Square ${square}`}
                   >
-                    {piece && pieceStyle === 'svg' && (
-                      <img
-                        className="piece-image"
-                        src={pieceSprites[piece.color][piece.type]}
-                        alt=""
-                        draggable="false"
-                      />
-                    )}
-                    {piece && pieceStyle !== 'svg' && (
-                      <span className={`piece piece--${piece.color}`}>
-                        {pieceLetters[piece.color][piece.type]}
+                    {piece && (
+                      <span className={`piece-shell${isAuraPiece ? ' piece-shell--aura' : ''}`}>
+                        {pieceStyle === 'svg' ? (
+                          <img
+                            className="piece-image"
+                            src={pieceSprites[piece.color][piece.type]}
+                            alt=""
+                            draggable="false"
+                          />
+                        ) : (
+                          <span className={`piece piece--${piece.color}`}>
+                            {pieceLetters[piece.color][piece.type]}
+                          </span>
+                        )}
+                        {isAuraPiece && <span className="piece-aura-mark">✦</span>}
                       </span>
                     )}
                     {rank === (flipped ? '8' : '1') && (

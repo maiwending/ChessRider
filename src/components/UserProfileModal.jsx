@@ -146,6 +146,8 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
         setSaveError('That username is already taken.');
       } else if (error?.code === INVALID_USERNAME_ERROR) {
         setSaveError('Username cannot be empty or contain "/".');
+      } else if (error?.code === 'permission-denied') {
+        setSaveError('Profile save was blocked by Firestore rules. Deploy firestore.rules, then try again.');
       } else {
         console.warn('Profile save failed:', error?.message || error);
         setSaveError('Unable to save your profile right now.');
