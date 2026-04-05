@@ -1,4 +1,4 @@
-# KNightAuraChess
+# KnightAuraChess
 
 A full-stack, real-time multiplayer chess variant where pieces near knights gain the ability to jump over blocking pieces. 
 
