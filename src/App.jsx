@@ -1438,7 +1438,7 @@ export default function App() {
           <main className="layout">
 
         {/* ── Board Column ── */}
-        <section className="board-section">
+        <section className={`board-section${board3d ? ' board-section--3d' : ''}`}>
           {/* Status */}
           <div className="board-header">
             <div className="game-mode-badge">
