@@ -29,10 +29,12 @@ export default function ChessBoard({
   legalMoves,
   onSquareClick,
   theme,
+  customThemeVars,
   pieceStyle,
   lastMove,
   flipped,
-  inCheck
+  inCheck,
+  board3d,
 }) {
   const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const ranksBase = ['8', '7', '6', '5', '4', '3', '2', '1'];
@@ -97,8 +99,13 @@ export default function ChessBoard({
 
   const checkSquare = getCheckSquare();
 
+  const themeClass = theme?.startsWith('custom:') ? 'theme-custom' : `theme-${theme || 'classic'}`;
+
   return (
-    <div className={`chessboard-wrapper theme-${theme || 'classic'}`}>
+    <div
+      className={`chessboard-wrapper ${themeClass}${board3d ? ' board--3d' : ''}`}
+      style={theme?.startsWith('custom:') ? customThemeVars : undefined}
+    >
       {game ? (
         <div className="board-surface">
           <div className="board-grid">

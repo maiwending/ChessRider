@@ -243,6 +243,23 @@
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
 }
 
+/* ─── 3D player bars ─── */
+.board-section--3d .player-bar {
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.5s ease;
+}
+
+.board-section--3d .player-bar--top {
+  transform: perspective(560px) rotateX(5deg);
+  transform-origin: bottom center;
+  box-shadow: 0 -6px 22px rgba(0,0,0,0.55);
+}
+
+.board-section--3d .player-bar--bottom {
+  transform: perspective(560px) rotateX(-5deg);
+  transform-origin: top center;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+}
+
 .player-bar--active-turn {
   border-left-color: var(--accent);
   background: linear-gradient(90deg, rgba(90,144,32,0.08) 0%, var(--bg-panel) 55%);
@@ -1155,6 +1172,192 @@ textarea.select {
 .piece-set-preview {
   font-size: 1.6rem;
   line-height: 1;
+}
+
+/* ─── Custom Theme Swatches ─── */
+.theme-swatch--custom {
+  position: relative;
+}
+
+.theme-swatch-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(192, 48, 48, 0.8);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+.theme-swatch--custom:hover .theme-swatch-delete {
+  opacity: 1;
+}
+
+.theme-swatch--add .theme-swatch-preview--add {
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  border: 2px dashed var(--border);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-xs);
+}
+
+/* ─── Theme Creator ─── */
+.theme-creator {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-panel-raised);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.theme-creator__pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-creator__color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.theme-creator__color-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.theme-creator__color-input {
+  width: 36px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  padding: 1px;
+  background: none;
+}
+
+.theme-creator__preview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  align-self: center;
+}
+
+.theme-creator__preview-sq {
+  width: 100%;
+  height: 100%;
+}
+
+.theme-creator__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-creator__actions .btn {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 7px 10px;
+}
+
+/* ─── Game Chat ─── */
+.game-chat {
+  width: 100%;
+  max-width: 580px;
+  margin-top: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.game-chat__header {
+  padding: 7px 14px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.game-chat__messages {
+  height: 150px;
+  overflow-y: auto;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.game-chat__empty {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.game-chat__message {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.game-chat__message--own .game-chat__message-name {
+  color: var(--accent-bright);
+}
+
+.game-chat__message-name {
+  font-weight: 700;
+  margin-right: 5px;
+  color: var(--text-bright);
+}
+
+.game-chat__input-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.game-chat__input-row .select {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.game-chat__input-row .btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  flex-shrink: 0;
 }
 
 /* ─── Move History ─── */

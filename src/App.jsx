@@ -23,6 +23,8 @@ import LearnPage from './components/LearnPage.jsx';
 import LeaderboardPanel from './components/LeaderboardPanel.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import SocialTab from './components/SocialTab.jsx';
+import ThemeCreator, { themeToVars } from './components/ThemeCreator.jsx';
+import GameChat from './components/GameChat.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { db, firebaseEnabled } from './utils/firebase.js';
 import './App.css';
@@ -153,7 +155,10 @@ export default function App() {
   const [matchStatus, setMatchStatus] = useState('idle');
   const [matchError, setMatchError] = useState('');
   const [movePending, setMovePending] = useState(false);
-  const [theme, setTheme] = useState('classic');
+  const [theme, setTheme] = useState(() => localStorage.getItem('cr_theme') || 'classic');
+  const [customThemes, setCustomThemes] = useState(() => JSON.parse(localStorage.getItem('cr_custom_themes') || '[]'));
+  const [showThemeCreator, setShowThemeCreator] = useState(false);
+  const [board3d, setBoard3d] = useState(() => localStorage.getItem('cr_3d') === 'true');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cr_dark') !== 'false');
   const [pieceStyle, setPieceStyle] = useState('svg');
   const [waitingGames, setWaitingGames] = useState([]);
@@ -200,6 +205,33 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     localStorage.setItem('cr_dark', darkMode ? 'true' : 'false');
   }, [darkMode]);
+
+  // Persist theme and 3D selections
+  useEffect(() => { localStorage.setItem('cr_theme', theme); }, [theme]);
+  useEffect(() => { localStorage.setItem('cr_3d', board3d ? 'true' : 'false'); }, [board3d]);
+
+  const customThemeVars = useMemo(() => {
+    if (!theme.startsWith('custom:')) return null;
+    const id = theme.slice(7);
+    const ct = customThemes.find(t => t.id === id);
+    return ct ? themeToVars(ct) : null;
+  }, [theme, customThemes]);
+
+  const saveCustomTheme = (themeData) => {
+    const newTheme = { ...themeData, id: Date.now().toString() };
+    const updated = [...customThemes, newTheme];
+    setCustomThemes(updated);
+    localStorage.setItem('cr_custom_themes', JSON.stringify(updated));
+    setTheme(`custom:${newTheme.id}`);
+    setShowThemeCreator(false);
+  };
+
+  const deleteCustomTheme = (id) => {
+    const updated = customThemes.filter(ct => ct.id !== id);
+    setCustomThemes(updated);
+    localStorage.setItem('cr_custom_themes', JSON.stringify(updated));
+    if (theme === `custom:${id}`) setTheme('classic');
+  };
 
   useEffect(() => {
     localResultRef.current = localResult;
@@ -483,7 +515,7 @@ export default function App() {
     };
   }, []);
 
-  const requestAiMove = useCallback((fen, _history, _timestamps) => {
+  const requestAiMove = useCallback((fen, _history, _timestamps, forceDifficulty) => {
     if (!aiWorkerRef.current) return;
     setAiThinking(true);
     setAiError('');
@@ -492,7 +524,7 @@ export default function App() {
     aiWorkerRef.current.postMessage({
       type: 'search',
       fen,
-      difficulty: aiDifficulty,
+      difficulty: forceDifficulty ?? aiDifficulty,
       id: requestId,
     });
   }, [aiDifficulty]);
@@ -580,7 +612,7 @@ export default function App() {
     if (turn !== 'b') return;
     if (botMovePendingRef.current) return;
     botMovePendingRef.current = true;
-    requestAiMove(gameData.fen, [], []);
+    requestAiMove(gameData.fen, [], [], 'hard');
   }, [isOnline, gameData?.status, gameData?.blackId, gameData?.fen, requestAiMove]);
 
   // ── Game actions ──
@@ -1406,7 +1438,7 @@ export default function App() {
           <main className="layout">
 
         {/* ── Board Column ── */}
-        <section className="board-section">
+        <section className={`board-section${board3d ? ' board-section--3d' : ''}`}>
           {/* Status */}
           <div className="board-header">
             <div className="game-mode-badge">
@@ -1496,10 +1528,12 @@ export default function App() {
             legalMoves={legalMoves}
             onSquareClick={handleSquareClick}
             theme={theme}
+            customThemeVars={customThemeVars}
             pieceStyle={pieceStyle}
             lastMove={lastMove}
             flipped={flipped}
             inCheck={inCheck}
+            board3d={board3d}
           />
 
           {/* Bottom player bar */}
@@ -1569,6 +1603,11 @@ export default function App() {
             </div>
           )}
           {aiError && <p className="error-text">{aiError}</p>}
+
+          {/* Live game chat */}
+          {isOnline && gameData?.status === 'active' && gameId && user && firebaseEnabled && (
+            <GameChat gameId={gameId} currentUser={user} currentUserName={displayName} />
+          )}
         </section>
 
         {/* ── Sidebar ── */}
@@ -1879,7 +1918,48 @@ export default function App() {
                         {t.label}
                       </button>
                     ))}
+                    {customThemes.map((ct) => {
+                      const ctVars = themeToVars(ct);
+                      return (
+                        <button
+                          key={ct.id}
+                          className={`theme-swatch theme-swatch--custom${theme === `custom:${ct.id}` ? ' active' : ''}`}
+                          onClick={() => setTheme(`custom:${ct.id}`)}
+                        >
+                          <div className="theme-swatch-preview">
+                            <span style={{ background: ctVars['--board-light'] }} />
+                            <span style={{ background: ctVars['--board-dark'] }} />
+                            <span style={{ background: ctVars['--board-dark'] }} />
+                            <span style={{ background: ctVars['--board-light'] }} />
+                          </div>
+                          {ct.name}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="theme-swatch-delete"
+                            title="Delete theme"
+                            onClick={e => { e.stopPropagation(); deleteCustomTheme(ct.id); }}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); deleteCustomTheme(ct.id); } }}
+                          >
+                            ×
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      className="theme-swatch theme-swatch--add"
+                      onClick={() => setShowThemeCreator(v => !v)}
+                    >
+                      <div className="theme-swatch-preview theme-swatch-preview--add">+</div>
+                      Create
+                    </button>
                   </div>
+                  {showThemeCreator && (
+                    <ThemeCreator
+                      onSave={saveCustomTheme}
+                      onCancel={() => setShowThemeCreator(false)}
+                    />
+                  )}
                 </div>
 
                 <div className="settings-section">
@@ -1892,6 +1972,20 @@ export default function App() {
                     <button className={`piece-set-btn${pieceStyle === 'minimal' ? ' active' : ''}`} onClick={() => setPieceStyle('minimal')}>
                       <span className="piece-set-preview" style={{ fontSize: '1.1rem', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>K</span>
                       Letters
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-section">
+                  <span className="settings-section-label">Board View</span>
+                  <div className="piece-set-grid">
+                    <button className={`piece-set-btn${!board3d ? ' active' : ''}`} onClick={() => setBoard3d(false)}>
+                      <span className="piece-set-preview">⬛</span>
+                      Flat
+                    </button>
+                    <button className={`piece-set-btn${board3d ? ' active' : ''}`} onClick={() => setBoard3d(true)}>
+                      <span className="piece-set-preview">🎲</span>
+                      3D
                     </button>
                   </div>
                 </div>
