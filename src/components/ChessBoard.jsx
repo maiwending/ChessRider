@@ -126,18 +126,48 @@ export default function ChessBoard({
   const selectedHandCenter = board3d && selectedSquare && !moveAnimation ? getSquareCenter(selectedSquare) : null;
   const selectedPiece = board3d && selectedSquare && !moveAnimation ? game.get(selectedSquare) : null;
   const [moveOverlayActive, setMoveOverlayActive] = useState(false);
+  const [moveProgress, setMoveProgress] = useState(0);
 
   useEffect(() => {
     if (!(board3d && moveAnimation && moveFromCenter && moveToCenter)) {
       setMoveOverlayActive(false);
+      setMoveProgress(0);
       return undefined;
     }
     setMoveOverlayActive(false);
-    const frame = requestAnimationFrame(() => {
+    setMoveProgress(0);
+    let frame = 0;
+    let start = 0;
+    const duration = 760;
+    const tick = (timestamp) => {
+      if (!start) start = timestamp;
+      const elapsed = timestamp - start;
+      const progress = Math.min(elapsed / duration, 1);
+      setMoveProgress(progress);
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    frame = requestAnimationFrame((timestamp) => {
       setMoveOverlayActive(true);
+      tick(timestamp);
     });
     return () => cancelAnimationFrame(frame);
   }, [board3d, moveAnimation, moveFromCenter, moveToCenter]);
+
+  const currentMoveCenter = (() => {
+    if (!moveFromCenter || !moveToCenter) return null;
+    const startX = Number.parseFloat(moveFromCenter.x);
+    const startY = Number.parseFloat(moveFromCenter.y);
+    const endX = Number.parseFloat(moveToCenter.x);
+    const endY = Number.parseFloat(moveToCenter.y);
+    const eased = 1 - (1 - moveProgress) ** 3;
+    return {
+      x: `${startX + (endX - startX) * eased}%`,
+      y: `${startY + (endY - startY) * eased}%`,
+      progress: eased,
+    };
+  })();
 
   const renderPieceVisual = (piece, className, style) => {
     if (effectivePieceStyle === 'svg') {
@@ -242,25 +272,23 @@ export default function ChessBoard({
               key={moveAnimation.key}
               className={`board-hand-overlay board-hand-overlay--move board-hand-overlay--${moveAnimation.actor}${moveOverlayActive ? ' board-hand-overlay--active' : ''}`}
               style={{
-                '--hand-x': moveFromCenter.x,
-                '--hand-y': moveFromCenter.y,
-                '--move-x': moveToCenter.x,
-                '--move-y': moveToCenter.y,
-                '--drop-x': '38px',
-                '--drop-y': '18px',
+                '--hand-x': currentMoveCenter?.x || moveFromCenter.x,
+                '--hand-y': currentMoveCenter?.y || moveFromCenter.y,
+                '--carry-lift': `${8 + (currentMoveCenter?.progress || 0) * 4}px`,
+                '--drop-x': '54px',
+                '--drop-y': '22px',
               }}
             >
               <div className="board-hand-carry">
                 <div className="board-hand board-hand--move" />
                 {renderPieceVisual(moveAnimation.movingPiece, 'board-hand-piece board-hand-piece--move')}
+                {moveAnimation.capturedPiece && (
+                  renderPieceVisual(
+                    moveAnimation.capturedPiece,
+                    `board-captured-piece board-captured-piece--throw${moveOverlayActive ? ' board-captured-piece--active' : ''}`
+                  )
+                )}
               </div>
-              {moveAnimation.capturedPiece && (
-                renderPieceVisual(
-                  moveAnimation.capturedPiece,
-                  'board-captured-piece',
-                  { '--capture-x': moveToCenter.x, '--capture-y': moveToCenter.y }
-                )
-              )}
             </div>
           )}
         </div>

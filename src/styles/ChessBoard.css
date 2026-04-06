@@ -402,15 +402,10 @@
   width: 0;
   height: 0;
   opacity: 0;
-  transition:
-    left 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    top 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    opacity 0.12s ease-out;
+  transition: opacity 0.12s ease-out;
 }
 
 .board-hand-overlay--active .board-hand-carry {
-  left: var(--move-x);
-  top: var(--move-y);
   opacity: 1;
 }
 
@@ -461,39 +456,47 @@
   left: 0;
   top: 0;
   transform: rotate(-8deg) scale(1);
-  transition: transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
+  transition: transform 0.08s linear;
 }
 
 .board-hand-piece--move {
   left: 0;
   top: 0;
   transform: scale(1.05);
-  transition: transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
+  transition: transform 0.08s linear;
 }
 
 .board-hand-overlay--active .board-hand--move {
-  transform: translateY(-8px) rotate(2deg) scale(1);
+  transform: translateY(calc(var(--carry-lift, 10px) * -1)) rotate(2deg) scale(1);
 }
 
 .board-hand-overlay--active .board-hand-piece--move {
-  transform: translateY(-10px) scale(1.05);
+  transform: translateY(calc((var(--carry-lift, 10px) + 2px) * -1)) scale(1.05);
 }
 
 .board-captured-piece {
   position: absolute;
-  left: var(--capture-x);
-  top: var(--capture-y);
   width: 42px;
   height: 42px;
   margin-left: -21px;
   margin-top: -21px;
   filter: drop-shadow(0 5px 7px rgba(0,0,0,0.35));
-  animation: captured-drop-side 0.5s cubic-bezier(0.2, 0.84, 0.28, 1) 0.62s forwards;
 }
 
 .board-captured-piece.board-hand-piece--text {
   margin-left: -21px;
   margin-top: -21px;
+}
+
+.board-captured-piece--throw {
+  left: 0;
+  top: 0;
+  opacity: 0;
+  transform: translateY(calc((var(--carry-lift, 10px) + 2px) * -1)) scale(0.98);
+}
+
+.board-captured-piece--active {
+  animation: captured-throw-side 0.54s cubic-bezier(0.2, 0.84, 0.28, 1) 0.72s forwards;
 }
 
 @keyframes hand-idle {
@@ -506,9 +509,16 @@
   100% { transform: translate3d(2px, -1px, 0) scale(1.03); }
 }
 
-@keyframes captured-drop-side {
+@keyframes captured-throw-side {
   0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    transform: translate3d(0, calc((var(--carry-lift, 10px) + 2px) * -1), 0) rotate(-8deg) scale(0.98);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  22% {
+    transform: translate3d(6px, calc((var(--carry-lift, 10px) + 12px) * -1), 0) rotate(8deg) scale(1.02);
     opacity: 1;
   }
   100% {
