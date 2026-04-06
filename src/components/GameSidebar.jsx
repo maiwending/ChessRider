@@ -290,18 +290,25 @@ export default function GameSidebar({
               </div>
               <div className="piece-set-grid">
                 <button
-                  className={`piece-set-btn${!settingsProps.board3d ? ' active' : ''}`}
-                  onClick={() => settingsProps.setBoard3d(false)}
+                  className={`piece-set-btn${settingsProps.boardView === 'flat' ? ' active' : ''}`}
+                  onClick={() => settingsProps.setBoardView('flat')}
                 >
                   <span className="piece-set-preview">⬛</span>
                   Flat
                 </button>
                 <button
-                  className={`piece-set-btn${settingsProps.board3d ? ' active' : ''}`}
-                  onClick={() => settingsProps.setBoard3d(true)}
+                  className={`piece-set-btn${settingsProps.boardView === '3d' ? ' active' : ''}`}
+                  onClick={() => settingsProps.setBoardView('3d')}
                 >
                   <span className="piece-set-preview">🎲</span>
                   3D
+                </button>
+                <button
+                  className={`piece-set-btn piece-set-btn--wide${settingsProps.boardView === 'realistic' ? ' active' : ''}`}
+                  onClick={() => settingsProps.setBoardView('realistic')}
+                >
+                  <span className="piece-set-preview">♞</span>
+                  Realistic
                 </button>
               </div>
             </div>

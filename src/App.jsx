@@ -68,6 +68,7 @@ const TIME_CONTROLS = [
   { label: '30 min', seconds: 1800 },
 ];
 const DEFAULT_TIME_CONTROL = 300;
+const BOARD_VIEW_MODES = ['flat', '3d', 'realistic'];
 const BASE_THEMES = [
   { key: 'classic', label: 'Classic', l: 'swatch-classic-light', d: 'swatch-classic-dark' },
   { key: 'slate', label: 'Slate', l: 'swatch-slate-light', d: 'swatch-slate-dark' },
@@ -75,6 +76,12 @@ const BASE_THEMES = [
 ];
 
 const createNewGame = () => new KnightJumpChess();
+
+const getInitialBoardView = () => {
+  const savedBoardView = localStorage.getItem('cr_board_view');
+  if (BOARD_VIEW_MODES.includes(savedBoardView)) return savedBoardView;
+  return localStorage.getItem('cr_3d') === 'true' ? '3d' : 'flat';
+};
 
 const buildMoveAnimationPayload = (board, moveLike, actor = 'self') => {
   if (!board || !moveLike?.from || !moveLike?.to) return null;
@@ -161,7 +168,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('cr_theme') || 'classic');
   const [customThemes, setCustomThemes] = useState(() => JSON.parse(localStorage.getItem('cr_custom_themes') || '[]'));
   const [showThemeCreator, setShowThemeCreator] = useState(false);
-  const [board3d, setBoard3d] = useState(() => localStorage.getItem('cr_3d') === 'true');
+  const [boardView, setBoardView] = useState(() => getInitialBoardView());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cr_dark') !== 'false');
   const [pieceStyle, setPieceStyle] = useState('svg');
   const [liveVoiceChat, setLiveVoiceChat] = useState(() => localStorage.getItem('cr_live_voice_chat') === 'true');
@@ -204,6 +211,7 @@ export default function App() {
   const [aiDifficulty, setAiDifficulty] = useState(envAiDifficulty);
 
   const isOnline = Boolean(gameId);
+  const board3d = boardView !== 'flat';
 
   useEffect(() => {
     const handlePopState = () => {
@@ -281,7 +289,10 @@ export default function App() {
 
   // Persist theme and 3D selections
   useEffect(() => { localStorage.setItem('cr_theme', theme); }, [theme]);
-  useEffect(() => { localStorage.setItem('cr_3d', board3d ? 'true' : 'false'); }, [board3d]);
+  useEffect(() => {
+    localStorage.setItem('cr_board_view', boardView);
+    localStorage.setItem('cr_3d', board3d ? 'true' : 'false');
+  }, [board3d, boardView]);
   useEffect(() => { localStorage.setItem('cr_live_voice_chat', liveVoiceChat ? 'true' : 'false'); }, [liveVoiceChat]);
 
   const customThemeVars = useMemo(() => {
@@ -1548,6 +1559,7 @@ export default function App() {
   };
 
   const boardShellProps = {
+    boardView,
     board3d,
     isOnline,
     aiEnabled,
@@ -1652,8 +1664,8 @@ export default function App() {
       saveCustomTheme,
       pieceStyle,
       setPieceStyle,
-      board3d,
-      setBoard3d,
+      boardView,
+      setBoardView,
       liveVoiceChat,
       setLiveVoiceChat,
       user,

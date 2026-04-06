@@ -36,6 +36,7 @@ export default function ChessBoard({
   flipped,
   inCheck,
   board3d,
+  boardView,
   moveAnimation,
 }) {
   const handleSquarePress = (event, square) => {
@@ -154,7 +155,7 @@ export default function ChessBoard({
 
   return (
     <div
-      className={`chessboard-wrapper ${themeClass}${board3d ? ' board--3d' : ''}`}
+      className={`chessboard-wrapper ${themeClass}${board3d ? ' board--3d' : ''}${boardView === 'realistic' ? ' board--realistic' : ''}`}
       style={theme?.startsWith('custom:') ? customThemeVars : undefined}
     >
       {game ? (

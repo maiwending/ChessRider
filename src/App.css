@@ -596,6 +596,18 @@
   background: linear-gradient(90deg, rgba(90,144,32,0.08) 0%, var(--bg-panel) 55%);
 }
 
+.board-section--realistic .player-bar::before {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.01)),
+    linear-gradient(90deg, rgba(87, 57, 28, 0.16), var(--bg-panel) 40%);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.38);
+}
+
+.board-section--realistic .player-bar__clock {
+  background: linear-gradient(180deg, rgba(40, 30, 22, 0.92), rgba(18, 14, 11, 0.96));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
 .player-bar__info {
   display: flex;
   align-items: center;
@@ -1592,6 +1604,10 @@ textarea.select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.piece-set-btn--wide {
+  grid-column: 1 / -1;
 }
 
 .piece-set-btn {

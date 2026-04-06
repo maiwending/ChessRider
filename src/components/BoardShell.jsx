@@ -5,6 +5,7 @@ import PlayerBar from './PlayerBar.jsx';
 const GameChat = lazy(() => import('./GameChat.jsx'));
 
 export default function BoardShell({
+  boardView,
   board3d,
   isOnline,
   aiEnabled,
@@ -45,7 +46,7 @@ export default function BoardShell({
   liveVoiceChat,
 }) {
   return (
-    <section className={`board-section${board3d ? ' board-section--3d' : ''}`}>
+    <section className={`board-section${board3d ? ' board-section--3d' : ''}${boardView === 'realistic' ? ' board-section--realistic' : ''}`}>
       <div className="board-header">
         <div className="game-mode-badge">
           <span className={`game-mode-dot${isOnline ? ' game-mode-dot--live' : ''}`} />
@@ -107,6 +108,7 @@ export default function BoardShell({
         flipped={flipped}
         inCheck={inCheck}
         board3d={board3d}
+        boardView={boardView}
         moveAnimation={moveAnimation}
       />
 
