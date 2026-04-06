@@ -20,6 +20,7 @@ import {
 import KnightJumpChess from './KnightJumpChess.js';
 import ChessBoard from './components/ChessBoard.jsx';
 import LearnPage from './components/LearnPage.jsx';
+import SignInPage from './components/SignInPage.jsx';
 import LeaderboardPanel from './components/LeaderboardPanel.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import SocialTab from './components/SocialTab.jsx';
@@ -104,6 +105,7 @@ const formatClock = (seconds) => {
 
 const getPageFromLocation = () => {
   if (typeof window === 'undefined') return 'game';
+  if (/\/SignIn\/?$/.test(window.location.pathname)) return 'signin';
   if (/\/Tutorials\/?$/.test(window.location.pathname)) return 'tutorials';
   if (/\/Learn\/?$/.test(window.location.pathname)) return 'learn';
   return 'game';
@@ -111,11 +113,13 @@ const getPageFromLocation = () => {
 
 const setBrowserPage = (page, replace = false) => {
   if (typeof window === 'undefined') return;
-  const nextUrl = page === 'tutorials'
-    ? `${APP_BASE_PATH}/Tutorials`
-    : page === 'learn'
-      ? `${APP_BASE_PATH}/Learn`
-      : (APP_BASE_PATH ? `${APP_BASE_PATH}/` : '/');
+  const nextUrl = page === 'signin'
+    ? `${APP_BASE_PATH}/SignIn`
+    : page === 'tutorials'
+      ? `${APP_BASE_PATH}/Tutorials`
+      : page === 'learn'
+        ? `${APP_BASE_PATH}/Learn`
+        : (APP_BASE_PATH ? `${APP_BASE_PATH}/` : '/');
   const method = replace ? 'replaceState' : 'pushState';
   window.history[method](null, '', nextUrl);
 };
@@ -210,6 +214,12 @@ export default function App() {
     setCurrentPage(page);
     setBrowserPage(page, replace);
   }, []);
+
+  useEffect(() => {
+    if (user && currentPage === 'signin') {
+      navigateToPage('game', true);
+    }
+  }, [currentPage, navigateToPage, user]);
 
   useEffect(() => {
     gameRef.current = game;
@@ -1497,51 +1507,9 @@ export default function App() {
             </div>
           ) : (
             <div className="auth-actions">
-              <div className="auth-form">
-                <div className="auth-mode-toggle">
-                  <button
-                    className={`auth-mode-btn${authMode === 'signin' ? ' active' : ''}`}
-                    onClick={() => setAuthMode('signin')}
-                    type="button"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    className={`auth-mode-btn${authMode === 'signup' ? ' active' : ''}`}
-                    onClick={() => setAuthMode('signup')}
-                    type="button"
-                  >
-                    Sign Up
-                  </button>
-                </div>
-                <div className="auth-form-row">
-                  <input
-                    className="select auth-input"
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="Email"
-                    autoComplete="email"
-                  />
-                  <input
-                    className="select auth-input"
-                    type="password"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleEmailAuth(); }}
-                    placeholder="Password"
-                    autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-                  />
-                </div>
-                <div className="auth-form-row">
-                  <button className="btn btn-primary" onClick={handleEmailAuth}>
-                    {authMode === 'signup' ? 'Create Account' : 'Email Sign In'}
-                  </button>
-                  <button className="btn btn-ghost" onClick={signInWithGoogle}>Google</button>
-                  <button className="btn btn-ghost" onClick={signInAnonymously}>Guest</button>
-                </div>
-                {authError && <div className="auth-error">{authError}</div>}
-              </div>
+              <button className="btn btn-primary" onClick={() => navigateToPage('signin')}>
+                Sign In
+              </button>
             </div>
           )}
         </div>
@@ -1551,7 +1519,23 @@ export default function App() {
       <div className="left-bg-art" aria-hidden="true" />
 
       {/* ── Main Layout ── */}
-      {currentPage === 'learn' ? (
+      {currentPage === 'signin' ? (
+        <SignInPage
+          authReady={authReady}
+          firebaseEnabled={firebaseEnabled}
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          authError={authError}
+          onSubmit={handleEmailAuth}
+          onGoogle={signInWithGoogle}
+          onGuest={signInAnonymously}
+          onBack={() => navigateToPage('game')}
+        />
+      ) : currentPage === 'learn' ? (
         <LearnPage onBack={() => navigateToPage('game')} onOpenTutorials={() => navigateToPage('tutorials')} />
       ) : currentPage === 'tutorials' ? (
         <LearnPage onBack={() => navigateToPage('learn')} tutorialsOnly />
