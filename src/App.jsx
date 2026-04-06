@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AiWorker from './workers/aiWorker.js?worker';
 import {
   addDoc,
@@ -18,17 +18,17 @@ import {
   where
 } from 'firebase/firestore';
 import KnightJumpChess from './KnightJumpChess.js';
-import ChessBoard from './components/ChessBoard.jsx';
-import LearnPage from './components/LearnPage.jsx';
-import SignInPage from './components/SignInPage.jsx';
-import LeaderboardPanel from './components/LeaderboardPanel.jsx';
-import UserProfileModal from './components/UserProfileModal.jsx';
-import SocialTab from './components/SocialTab.jsx';
-import ThemeCreator, { themeToVars } from './components/ThemeCreator.jsx';
-import GameChat from './components/GameChat.jsx';
+import AppHeader from './components/AppHeader.jsx';
+import AppPageRouter from './components/AppPageRouter.jsx';
+import { themeToVars } from './components/ThemeCreator.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
+import {
+  BOARD_HAND_CAPTURE_TOTAL_MS,
+  BOARD_HAND_TOTAL_MS,
+} from './utils/boardHandAnimation.js';
 import { db, firebaseEnabled } from './utils/firebase.js';
 import './App.css';
+const UserProfileModal = React.lazy(() => import('./components/UserProfileModal.jsx'));
 
 const GAMES_COLLECTION = 'games';
 const RULE_ID = 'chessrider';
@@ -68,6 +68,11 @@ const TIME_CONTROLS = [
   { label: '30 min', seconds: 1800 },
 ];
 const DEFAULT_TIME_CONTROL = 300;
+const BASE_THEMES = [
+  { key: 'classic', label: 'Classic', l: 'swatch-classic-light', d: 'swatch-classic-dark' },
+  { key: 'slate', label: 'Slate', l: 'swatch-slate-light', d: 'swatch-slate-dark' },
+  { key: 'rosewood', label: 'Rosewood', l: 'swatch-rosewood-light', d: 'swatch-rosewood-dark' },
+];
 
 const createNewGame = () => new KnightJumpChess();
 
@@ -104,22 +109,21 @@ const formatClock = (seconds) => {
 };
 
 const getPageFromLocation = () => {
-  if (typeof window === 'undefined') return 'game';
+  if (typeof window === 'undefined') return 'home';
   if (/\/SignIn\/?$/.test(window.location.pathname)) return 'signin';
   if (/\/Tutorials\/?$/.test(window.location.pathname)) return 'tutorials';
   if (/\/Learn\/?$/.test(window.location.pathname)) return 'learn';
-  return 'game';
+  if (/\/Play\/?$/.test(window.location.pathname)) return 'game';
+  return 'home';
 };
 
 const setBrowserPage = (page, replace = false) => {
   if (typeof window === 'undefined') return;
-  const nextUrl = page === 'signin'
-    ? `${APP_BASE_PATH}/SignIn`
-    : page === 'tutorials'
-      ? `${APP_BASE_PATH}/Tutorials`
-      : page === 'learn'
-        ? `${APP_BASE_PATH}/Learn`
-        : (APP_BASE_PATH ? `${APP_BASE_PATH}/` : '/');
+  let nextUrl = APP_BASE_PATH ? `${APP_BASE_PATH}/` : '/';
+  if (page === 'signin') nextUrl = `${APP_BASE_PATH}/SignIn`;
+  else if (page === 'tutorials') nextUrl = `${APP_BASE_PATH}/Tutorials`;
+  else if (page === 'learn') nextUrl = `${APP_BASE_PATH}/Learn`;
+  else if (page === 'game') nextUrl = `${APP_BASE_PATH}/Play`;
   const method = replace ? 'replaceState' : 'pushState';
   window.history[method](null, '', nextUrl);
 };
@@ -230,7 +234,7 @@ export default function App() {
     const timer = setTimeout(() => {
       setMoveAnimation(null);
       lastAnimatedMoveRef.current = null;
-    }, moveAnimation.capturedPiece ? 1460 : 860);
+    }, moveAnimation.capturedPiece ? BOARD_HAND_CAPTURE_TOTAL_MS : BOARD_HAND_TOTAL_MS);
     return () => clearTimeout(timer);
   }, [moveAnimation]);
 
@@ -1475,717 +1479,238 @@ export default function App() {
     ? (playerColor === 'w' ? (gameData?.whiteRatingAfter ?? gameData?.whiteRating) : (gameData?.blackRatingAfter ?? gameData?.blackRating))
     : (aiEnabled ? rating : null);
 
+  const winnerByKing = game.getWinnerByKingCapture();
+  const isCheckmate = !localResult && !winnerByKing && game.isCheckmateRider();
+  const isStalemate = !localResult && !winnerByKing && !isCheckmate && game.isStalemateRider();
+  const victoryText = localResult?.text
+    || (winnerByKing ? `${formatTurn(winnerByKing)} wins by king capture` : null)
+    || (isCheckmate ? `Checkmate — ${formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins` : null)
+    || (isStalemate ? 'Stalemate — Draw' : null);
+  const showCheckAlert = inCheck && !localResult && !winnerByKing && !isCheckmate;
+  const showPlayerClocks = isOnline || (aiEnabled && !isOnline);
+  const topColor = flipped ? 'w' : 'b';
+  const bottomColor = flipped ? 'b' : 'w';
+  const topClock = topColor === 'w' ? clockWhite : clockBlack;
+  const bottomClock = bottomColor === 'w' ? clockWhite : clockBlack;
+  const topPlayer = {
+    color: topColor,
+    isActiveTurn: game.turn() === topColor && !isGameOver(),
+    name: flipped ? bottomPlayerName : topPlayerName,
+    rating: flipped ? bottomPlayerRating : topPlayerRating,
+    clock: showPlayerClocks ? topClock : null,
+  };
+  const bottomPlayer = {
+    color: bottomColor,
+    isActiveTurn: game.turn() === bottomColor && !isGameOver(),
+    name: flipped ? topPlayerName : bottomPlayerName,
+    rating: flipped ? topPlayerRating : bottomPlayerRating,
+    clock: showPlayerClocks ? bottomClock : null,
+  };
+
+  const handleSelectTimeControl = useCallback(async (seconds) => {
+    setSelectedTimeControl(seconds);
+    if (gameId && db) {
+      await updateDoc(doc(db, GAMES_COLLECTION, gameId), {
+        timeControl: seconds,
+        whiteTimeLeft: seconds,
+        blackTimeLeft: seconds,
+      });
+    }
+  }, [gameId]);
+
+  const moveTable = renderMoveTable();
+
+  const homePageProps = {
+    user,
+    firebaseEnabled,
+    onPlayGuest: () => {
+      setAiEnabled(false);
+      resetPractice();
+      navigateToPage('game');
+    },
+    onSignIn: () => navigateToPage(user ? 'game' : 'signin'),
+    onHowItWorks: () => navigateToPage('learn'),
+  };
+
+  const signInPageProps = {
+    authReady,
+    firebaseEnabled,
+    authMode,
+    setAuthMode,
+    authEmail,
+    setAuthEmail,
+    authPassword,
+    setAuthPassword,
+    authError,
+    onSubmit: handleEmailAuth,
+    onGoogle: signInWithGoogle,
+    onGuest: signInAnonymously,
+  };
+
+  const boardShellProps = {
+    board3d,
+    isOnline,
+    aiEnabled,
+    playerColor,
+    aiDifficulty,
+    gameStatusText: gameStatusText(),
+    incomingChallenge,
+    onAcceptChallenge: acceptChallenge,
+    onDeclineChallenge: declineChallenge,
+    victoryText,
+    showCheckAlert,
+    topPlayer,
+    bottomPlayer,
+    formatClock,
+    game,
+    selectedSquare,
+    legalMoves,
+    onSquareClick: handleSquareClick,
+    theme,
+    customThemeVars,
+    pieceStyle,
+    lastMove,
+    flipped,
+    inCheck,
+    moveAnimation,
+    onFlipBoard: () => setFlipped(!flipped),
+    onNewGame: resetPractice,
+    onStopAi: () => {
+      setAiEnabled(false);
+      resetPractice();
+    },
+    onLeaveMatch: leaveMatch,
+    matchError,
+    aiThinking,
+    aiError,
+    isBotOnlineGame: isBotOnlineGameRef.current,
+    gameData,
+    gameId,
+    user,
+    displayName,
+    liveVoiceChat,
+  };
+
+  const sidebarProps = {
+    activeTab,
+    setActiveTab,
+    unreadDmCount,
+    playProps: {
+      isOnline,
+      user,
+      firebaseEnabled,
+      gameData,
+      matchStatus,
+      opponentName,
+      playerColor,
+      readyStatus,
+      timeControls: TIME_CONTROLS,
+      selectedTimeControl,
+      onSelectTimeControl: handleSelectTimeControl,
+      formatClock,
+      clockWhite,
+      clockBlack,
+      currentTurn: game.turn(),
+      startMatchmaking,
+      aiEnabled,
+      onPlayAi: () => {
+        setAiEnabled(true);
+        resetPractice();
+      },
+      aiDifficulty,
+      aiDifficultyLevels: AI_DIFFICULTY_LEVELS,
+      onSelectAiDifficulty: setAiDifficulty,
+      aiThinking,
+      cancelMatchmaking,
+      leaveMatch,
+      toggleReady,
+    },
+    moveHistory,
+    moveTable,
+    aiEnabled,
+    moveTimestamps,
+    formatTime,
+    gamesProps: {
+      user,
+      isOnline,
+      createCustomGame,
+      joinGameId,
+      setJoinGameId,
+      joinCustomGame,
+      waitingGames,
+    },
+    settingsProps: {
+      darkMode,
+      setDarkMode,
+      baseThemes: BASE_THEMES,
+      theme,
+      setTheme,
+      customThemes,
+      deleteCustomTheme,
+      showThemeCreator,
+      setShowThemeCreator,
+      saveCustomTheme,
+      pieceStyle,
+      setPieceStyle,
+      board3d,
+      setBoard3d,
+      liveVoiceChat,
+      setLiveVoiceChat,
+      user,
+      onEditProfile: () => setProfileModalUid(user.uid),
+    },
+    rankingsProps: {
+      user,
+      onPlayerClick: (player) => setProfileModalUid(player.id),
+    },
+    socialProps: {
+      user,
+      displayName,
+      photoURL: profile?.photoURL || null,
+      onPlayerClick: (player) => setProfileModalUid(player.id),
+      pendingDm,
+      onPendingDmHandled: () => setPendingDm(null),
+      onChallengeFriend: handleChallengeFriend,
+    },
+  };
+
   return (
     <div className="app">
-      {/* ── Top Bar ── */}
-      <header className="top-bar">
-        <div className="brand">
-          <img src="/riderchess.png" alt="Logo" className="brand-logo" />
-          <div className="brand-text">
-            <h1>Knight-Aura Chess</h1>
-            <p className="brand-subtitle">Chess reimagined — unleash the power of the horse</p>
-          </div>
-        </div>
-        <div className="auth-panel">
-          {!authReady ? (
-            <span className="auth-status">Connecting...</span>
-          ) : !firebaseEnabled ? (
-            <span className="auth-status">Local mode</span>
-          ) : user ? (
-            <div className="auth-user">
-              <div className="auth-user-chip" onClick={() => setProfileModalUid(user.uid)} role="button" tabIndex={0}>
-                <div className="auth-avatar-mini">
-                  {profile?.photoURL
-                    ? <img src={profile.photoURL} alt="" referrerPolicy="no-referrer" />
-                    : (displayName || '?')[0].toUpperCase()
-                  }
-                </div>
-                <span className="auth-name">{displayName}</span>
-                <span className="auth-meta">{rating}</span>
-              </div>
-              <button className="btn btn-ghost" style={{ fontSize: '0.8rem', padding: '5px 12px' }} onClick={signOut}>Sign out</button>
-            </div>
-          ) : (
-            <div className="auth-actions">
-              <button className="btn btn-primary" onClick={() => navigateToPage('signin')}>
-                Sign In
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* ── Left decorative background ── */}
+      <AppHeader
+        authReady={authReady}
+        user={user}
+        profile={profile}
+        displayName={displayName}
+        rating={rating}
+        onOpenProfile={() => setProfileModalUid(user.uid)}
+        onOpenSignIn={() => navigateToPage('signin')}
+        onSignOut={signOut}
+      />
       <div className="left-bg-art" aria-hidden="true" />
-
-      {/* ── Main Layout ── */}
-      {currentPage === 'signin' ? (
-        <SignInPage
-          authReady={authReady}
-          firebaseEnabled={firebaseEnabled}
-          authMode={authMode}
-          setAuthMode={setAuthMode}
-          authEmail={authEmail}
-          setAuthEmail={setAuthEmail}
-          authPassword={authPassword}
-          setAuthPassword={setAuthPassword}
-          authError={authError}
-          onSubmit={handleEmailAuth}
-          onGoogle={signInWithGoogle}
-          onGuest={signInAnonymously}
-          onBack={() => navigateToPage('game')}
-        />
-      ) : currentPage === 'learn' ? (
-        <LearnPage onBack={() => navigateToPage('game')} onOpenTutorials={() => navigateToPage('tutorials')} />
-      ) : currentPage === 'tutorials' ? (
-        <LearnPage onBack={() => navigateToPage('learn')} tutorialsOnly />
-      ) : (
-        <>
-          <main className="layout">
-
-        {/* ── Board Column ── */}
-        <section className={`board-section${board3d ? ' board-section--3d' : ''}`}>
-          {/* Status */}
-          <div className="board-header">
-            <div className="game-mode-badge">
-              <span className={`game-mode-dot${isOnline ? ' game-mode-dot--live' : ''}`} />
-              {isOnline ? 'Live Match' : aiEnabled ? 'vs AI' : 'Practice'}
-            </div>
-            <span className="game-status-text">{gameStatusText()}</span>
-            {isOnline && playerColor && (
-              <div className="player-chip">{formatTurn(playerColor)}</div>
-            )}
-            {!isOnline && aiEnabled && (
-              <div className="ai-opponent-badge">
-                <span className="badge-icon">⚙</span>
-                <div className="badge-content">
-                  <p className="badge-label">AI</p>
-                  <p className="badge-difficulty">{aiDifficulty}</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Challenge toast */}
-          {incomingChallenge && !isOnline && (
-            <div className="challenge-toast">
-              <p className="challenge-toast-text">
-                <strong>{incomingChallenge.fromName}</strong> challenged you to a game!
-              </p>
-              <div className="challenge-toast-actions">
-                <button className="btn btn-primary" style={{ padding: '0.3rem 0.9rem', fontSize: '0.82rem' }} onClick={acceptChallenge}>Accept</button>
-                <button className="btn btn-ghost" style={{ padding: '0.3rem 0.9rem', fontSize: '0.82rem' }} onClick={declineChallenge}>Decline</button>
-              </div>
-            </div>
-          )}
-
-          {/* Alerts */}
-          {localResult?.text && (
-            <div className="victory-banner">
-              {localResult.text}
-            </div>
-          )}
-          {!localResult && game.getWinnerByKingCapture() && (
-            <div className="victory-banner">
-              {formatTurn(game.getWinnerByKingCapture())} wins by king capture
-            </div>
-          )}
-          {!localResult && !game.getWinnerByKingCapture() && game.isCheckmateRider() && (
-            <div className="victory-banner">
-              Checkmate — {formatTurn(game.turn() === 'w' ? 'b' : 'w')} wins
-            </div>
-          )}
-          {!localResult && !game.getWinnerByKingCapture() && game.isStalemateRider() && (
-            <div className="victory-banner">Stalemate — Draw</div>
-          )}
-          {inCheck && !localResult && !game.getWinnerByKingCapture() && !game.isCheckmateRider() && (
-            <div className="check-alert">Check!</div>
-          )}
-
-          {/* Top player bar */}
-          {(() => {
-            const topColor = flipped ? 'w' : 'b';
-            const isActiveTurn = game.turn() === topColor && !isGameOver();
-            const topClock = topColor === 'w' ? clockWhite : clockBlack;
-            return (
-              <div className={`player-bar player-bar--top${isActiveTurn ? ' player-bar--active-turn' : ''}`}>
-                <div className="player-bar__info">
-                  <span className={`player-bar__color-indicator player-bar__color-indicator--${topColor === 'w' ? 'white' : 'black'}`} />
-                  <span className="player-bar__name">{flipped ? bottomPlayerName : topPlayerName}</span>
-                  {(flipped ? bottomPlayerRating : topPlayerRating) && (
-                    <span className="player-bar__rating">
-                      {flipped ? bottomPlayerRating : topPlayerRating}
-                    </span>
-                  )}
-                </div>
-                {((isOnline || (aiEnabled && !isOnline)) && topClock != null) && (
-                  <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}${topClock <= 10 ? ' player-bar__clock--low' : ''}`}>
-                    {formatClock(topClock)}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Board */}
-          <ChessBoard
-            game={game}
-            selectedSquare={selectedSquare}
-            legalMoves={legalMoves}
-            onSquareClick={handleSquareClick}
-            theme={theme}
-            customThemeVars={customThemeVars}
-            pieceStyle={pieceStyle}
-            lastMove={lastMove}
-            flipped={flipped}
-            inCheck={inCheck}
-            board3d={board3d}
-            moveAnimation={moveAnimation}
-          />
-
-          {/* Bottom player bar */}
-          {(() => {
-            const botColor = flipped ? 'b' : 'w';
-            const isActiveTurn = game.turn() === botColor && !isGameOver();
-            const botClock = botColor === 'w' ? clockWhite : clockBlack;
-            return (
-              <div className={`player-bar player-bar--bottom${isActiveTurn ? ' player-bar--active-turn' : ''}`}>
-                <div className="player-bar__info">
-                  <span className={`player-bar__color-indicator player-bar__color-indicator--${botColor === 'w' ? 'white' : 'black'}`} />
-                  <span className="player-bar__name">{flipped ? topPlayerName : bottomPlayerName}</span>
-                  {(flipped ? topPlayerRating : bottomPlayerRating) && (
-                    <span className="player-bar__rating">
-                      {flipped ? topPlayerRating : bottomPlayerRating}
-                    </span>
-                  )}
-                </div>
-                {((isOnline || (aiEnabled && !isOnline)) && botClock != null) && (
-                  <div className={`player-bar__clock${isActiveTurn ? ' player-bar__clock--active' : ''}${botClock <= 10 ? ' player-bar__clock--low' : ''}`}>
-                    {formatClock(botClock)}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Board action buttons */}
-          <div className="board-actions">
-            <button
-              className="btn btn-ghost"
-              onClick={() => setFlipped(!flipped)}
-              title="Flip board"
-            >
-              ⇅ Flip
-            </button>
-            <button
-              className="btn btn-ghost"
-              onClick={resetPractice}
-              disabled={isOnline}
-              title="New game"
-            >
-              + New
-            </button>
-            {aiEnabled && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => { setAiEnabled(false); resetPractice(); }}
-              >
-                Stop AI
-              </button>
-            )}
-            {isOnline && (
-              <button className="btn btn-danger" onClick={leaveMatch}>
-                Resign
-              </button>
-            )}
-          </div>
-
-          {matchError && <p className="error-text">{matchError}</p>}
-
-          {/* AI thinking indicator — hide when bot is playing as online opponent */}
-          {aiThinking && !isBotOnlineGameRef.current && (
-            <div className="ai-thinking-indicator">
-              <div className="thinking-spinner" />
-              <span className="thinking-text">AI is thinking...</span>
-            </div>
-          )}
-          {aiError && <p className="error-text">{aiError}</p>}
-
-          {/* Live game chat */}
-          {isOnline && gameData?.status === 'active' && gameId && user && firebaseEnabled && (
-            <GameChat
-              gameId={gameId}
-              currentUser={user}
-              currentUserName={displayName}
-              liveVoiceChat={liveVoiceChat}
-              playerColor={playerColor}
-            />
-          )}
-        </section>
-
-        {/* ── Sidebar ── */}
-        <div className="sidebar">
-          <nav className="tab-navigation">
-            {[
-              { key: 'play',     icon: '▶',  label: 'Play' },
-              { key: 'moves',    icon: '☰',  label: 'Moves' },
-              { key: 'games',    icon: '⚔',  label: 'Games' },
-              { key: 'social',   icon: '👥', label: 'Social', badge: unreadDmCount },
-              { key: 'rankings', icon: '🏆', label: 'Rank' },
-              { key: 'settings', icon: '⚙',  label: 'Settings' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                <span className="tab-icon-wrap">
-                  <span className="tab-icon">{tab.icon}</span>
-                  {tab.badge > 0 && <span className="tab-badge">{tab.badge}</span>}
-                </span>
-                <span className="tab-label">{tab.label}</span>
-              </button>
-            ))}
-            <button
-              className={`tab-btn ${currentPage === 'learn' || currentPage === 'tutorials' ? 'active' : ''}`}
-              onClick={() => navigateToPage('learn')}
-            >
-              <span className="tab-icon-wrap"><span className="tab-icon">📖</span></span>
-              <span className="tab-label">Learn</span>
-            </button>
-          </nav>
-
-          <div className="tab-content">
-            {/* ── Play Tab ── */}
-            {activeTab === 'play' && (
-              <div className="tab-panel">
-                <h3>Play</h3>
-                {isOnline ? (
-                  <>
-                    <p className="match-state">
-                      Status: <strong>{gameData?.status || matchStatus}</strong>
-                    </p>
-                    <p className="muted">Opponent: {opponentName}</p>
-                    {gameData?.status === 'waiting' && playerColor && (
-                      <div className="ready-panel">
-                        {/* Time control — host (white) can set before readying up */}
-                        {playerColor === 'w' && !readyStatus.self ? (
-                          <div style={{ marginBottom: '12px' }}>
-                            <p className="play-section-label" style={{ marginBottom: '6px' }}>Time Control</p>
-                            <div className="time-control-grid">
-                              {TIME_CONTROLS.map((tc) => (
-                                <button
-                                  key={tc.seconds}
-                                  className={`time-control-btn${selectedTimeControl === tc.seconds ? ' active' : ''}`}
-                                  onClick={async () => {
-                                    setSelectedTimeControl(tc.seconds);
-                                    if (gameId && db) {
-                                      await updateDoc(doc(db, GAMES_COLLECTION, gameId), {
-                                        timeControl: tc.seconds,
-                                        whiteTimeLeft: tc.seconds,
-                                        blackTimeLeft: tc.seconds
-                                      });
-                                    }
-                                  }}
-                                >
-                                  {tc.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="muted" style={{ marginBottom: '8px' }}>
-                            ⏱ {formatClock(gameData?.timeControl ?? selectedTimeControl)} per player
-                          </p>
-                        )}
-                        <div className="ready-row">
-                          <span>You</span>
-                          <span className={readyStatus.self ? 'ready-chip ready-chip--on' : 'ready-chip'}>
-                            {readyStatus.self ? 'Ready' : 'Not ready'}
-                          </span>
-                        </div>
-                        <div className="ready-row">
-                          <span>{opponentName}</span>
-                          <span className={readyStatus.opponent ? 'ready-chip ready-chip--on' : 'ready-chip'}>
-                            {readyStatus.opponent ? 'Ready' : 'Not ready'}
-                          </span>
-                        </div>
-                        <button className="btn btn-primary" onClick={toggleReady}>
-                          {readyStatus.self ? 'Unready' : 'Ready up'}
-                        </button>
-                        <p className="muted">Game starts when both players are ready.</p>
-                      </div>
-                    )}
-                    {/* Live clocks in sidebar */}
-                    {gameData?.status === 'active' && clockWhite != null && (
-                      <div className="sidebar-clocks">
-                        <div className={`sidebar-clock-row${game.turn() === 'b' ? ' sidebar-clock-row--active' : ''}`}>
-                          <span className="sidebar-clock-label">⬛ Black</span>
-                          <span className={`sidebar-clock-val${clockBlack <= 10 ? ' sidebar-clock-val--low' : ''}`}>
-                            {formatClock(clockBlack)}
-                          </span>
-                        </div>
-                        <div className={`sidebar-clock-row${game.turn() === 'w' ? ' sidebar-clock-row--active' : ''}`}>
-                          <span className="sidebar-clock-label">⬜ White</span>
-                          <span className={`sidebar-clock-val${clockWhite <= 10 ? ' sidebar-clock-val--low' : ''}`}>
-                            {formatClock(clockWhite)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    {gameData?.status === 'waiting' ? (
-                      <button className="btn btn-ghost" onClick={cancelMatchmaking}>Cancel</button>
-                    ) : ['completed', 'draw', 'abandoned'].includes(gameData?.status) ? (
-                      <button className="btn btn-primary" onClick={leaveMatch}>Return to Lobby</button>
-                    ) : (
-                      <button className="btn btn-danger" onClick={leaveMatch}>Resign</button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {user && (
-                      <div style={{ marginBottom: '10px' }}>
-                        <p className="play-section-label" style={{ marginBottom: '6px' }}>⏱ Time Control</p>
-                        <div className="time-control-grid">
-                          {TIME_CONTROLS.map((tc) => (
-                            <button
-                              key={tc.seconds}
-                              className={`time-control-btn${selectedTimeControl === tc.seconds ? ' active' : ''}`}
-                              onClick={() => setSelectedTimeControl(tc.seconds)}
-                            >
-                              {tc.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {user ? (
-                      <button className="btn btn-primary" onClick={startMatchmaking} style={{ width: '100%', marginBottom: 8 }}>
-                        Find Online Match
-                      </button>
-                    ) : (
-                      <p className="muted" style={{ marginBottom: 8 }}>
-                        {firebaseEnabled
-                          ? 'Sign in to play online.'
-                          : 'Local mode — online play disabled.'}
-                      </p>
-                    )}
-                    <button
-                      className="btn btn-ghost"
-                      style={{ width: '100%', marginBottom: 8 }}
-                      onClick={() => {
-                        setAiEnabled(true);
-                        resetPractice();
-                      }}
-                    >
-                      ⚙ Play vs AI
-                    </button>
-                    
-                    <div style={{ marginBottom: '8px' }}>
-                      <p className="play-section-label" style={{ marginBottom: '6px' }}>AI Difficulty</p>
-                      <div className="difficulty-grid">
-                        {AI_DIFFICULTY_LEVELS.map((d) => (
-                          <button
-                            key={d}
-                            className={`difficulty-btn${aiDifficulty === d ? ' active' : ''}`}
-                            onClick={() => setAiDifficulty(d)}
-                            disabled={aiThinking}
-                          >
-                            {d.charAt(0).toUpperCase() + d.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {aiEnabled && (
-                      <div className="ai-mode-status">
-                        <p className="ai-status-text">✓ AI Active</p>
-                        <p className="ai-status-difficulty">{aiDifficulty.charAt(0).toUpperCase() + aiDifficulty.slice(1)}</p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ── Moves Tab ── */}
-            {activeTab === 'moves' && (
-              <div className="tab-panel">
-                <h3>Moves</h3>
-                <div className="moves-list">
-                  {renderMoveTable()}
-                </div>
-                {moveHistory.length > 0 && aiEnabled && (
-                  <div className="time-summary" style={{ marginTop: 10 }}>
-                    <div className="summary-item">
-                      <span className="summary-label">White</span>
-                      <span className="summary-time">
-                        {formatTime(moveTimestamps.reduce((sum, t) => sum + (t?.white || 0), 0))}
-                      </span>
-                    </div>
-                    <div className="summary-item">
-                      <span className="summary-label">Black</span>
-                      <span className="summary-time">
-                        {formatTime(moveTimestamps.reduce((sum, t) => sum + (t?.black || 0), 0))}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── Games Tab ── */}
-            {activeTab === 'games' && (
-              <div className="tab-panel">
-                <h3>Custom Games</h3>
-                {!user ? (
-                  <p className="muted">Sign in to create or join a game.</p>
-                ) : isOnline ? (
-                  <p className="muted">Leave the current match to join another.</p>
-                ) : (
-                  <>
-                    <button className="btn btn-primary" onClick={createCustomGame} style={{ width: '100%', marginBottom: 8 }}>
-                      Create New Game
-                    </button>
-                    <div className="theme-select">
-                      <label htmlFor="join-game" className="muted">Join by game ID</label>
-                      <input
-                        id="join-game"
-                        className="select"
-                        type="text"
-                        value={joinGameId}
-                        onChange={(event) => setJoinGameId(event.target.value)}
-                        placeholder="Paste game ID"
-                      />
-                      <button className="btn btn-primary" onClick={() => joinCustomGame(joinGameId)} style={{ marginTop: 4 }}>
-                        Join
-                      </button>
-                    </div>
-                    {waitingGames.length > 0 ? (
-                      <div className="waiting-list">
-                        <p className="muted">Open games:</p>
-                        <ul>
-                          {waitingGames.map((row) => (
-                            <li key={row.id}>
-                              <div className="waiting-meta">
-                                <strong>{row.host}</strong>
-                                <span className="muted">
-                                  {row.createdAt
-                                    ? row.createdAt.toLocaleString()
-                                    : 'Just now'}
-                                </span>
-                              </div>
-                              <button className="btn btn-ghost" onClick={() => joinCustomGame(row.id)}>
-                                Join
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <p className="muted">No open games.</p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ── Settings Tab ── */}
-            {activeTab === 'settings' && (
-              <div className="tab-panel">
-                <h3>Settings</h3>
-
-                <div className="settings-section">
-                  <span className="settings-section-label">Interface Mode</span>
-                  <div className="piece-set-grid">
-                    <button
-                      className={`piece-set-btn${!darkMode ? ' active' : ''}`}
-                      onClick={() => setDarkMode(false)}
-                    >
-                      <span className="piece-set-preview">☀</span>
-                      Light
-                    </button>
-                    <button
-                      className={`piece-set-btn${darkMode ? ' active' : ''}`}
-                      onClick={() => setDarkMode(true)}
-                    >
-                      <span className="piece-set-preview">🌙</span>
-                      Dark
-                    </button>
-                  </div>
-                </div>
-
-                <div className="settings-section">
-                  <span className="settings-section-label">Board Theme</span>
-                  <div className="theme-swatches">
-                    {[
-                      { key: 'classic', label: 'Classic', l: 'swatch-classic-light', d: 'swatch-classic-dark' },
-                      { key: 'slate', label: 'Slate', l: 'swatch-slate-light', d: 'swatch-slate-dark' },
-                      { key: 'rosewood', label: 'Rosewood', l: 'swatch-rosewood-light', d: 'swatch-rosewood-dark' },
-                    ].map((t) => (
-                      <button key={t.key} className={`theme-swatch${theme === t.key ? ' active' : ''}`} onClick={() => setTheme(t.key)}>
-                        <div className="theme-swatch-preview">
-                          <span className={t.l} /><span className={t.d} />
-                          <span className={t.d} /><span className={t.l} />
-                        </div>
-                        {t.label}
-                      </button>
-                    ))}
-                    {customThemes.map((ct) => {
-                      const ctVars = themeToVars(ct);
-                      return (
-                        <button
-                          key={ct.id}
-                          className={`theme-swatch theme-swatch--custom${theme === `custom:${ct.id}` ? ' active' : ''}`}
-                          onClick={() => setTheme(`custom:${ct.id}`)}
-                        >
-                          <div className="theme-swatch-preview">
-                            <span style={{ background: ctVars['--board-light'] }} />
-                            <span style={{ background: ctVars['--board-dark'] }} />
-                            <span style={{ background: ctVars['--board-dark'] }} />
-                            <span style={{ background: ctVars['--board-light'] }} />
-                          </div>
-                          {ct.name}
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            className="theme-swatch-delete"
-                            title="Delete theme"
-                            onClick={e => { e.stopPropagation(); deleteCustomTheme(ct.id); }}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); deleteCustomTheme(ct.id); } }}
-                          >
-                            ×
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <button
-                      className="theme-swatch theme-swatch--add"
-                      onClick={() => setShowThemeCreator(v => !v)}
-                    >
-                      <div className="theme-swatch-preview theme-swatch-preview--add">+</div>
-                      Create
-                    </button>
-                  </div>
-                  {showThemeCreator && (
-                    <ThemeCreator
-                      onSave={saveCustomTheme}
-                      onCancel={() => setShowThemeCreator(false)}
-                    />
-                  )}
-                </div>
-
-                <div className="settings-section">
-                  <span className="settings-section-label">Piece Set</span>
-                  <div className="piece-set-grid">
-                    <button className={`piece-set-btn${pieceStyle === 'svg' ? ' active' : ''}`} onClick={() => setPieceStyle('svg')}>
-                      <span className="piece-set-preview">♜</span>
-                      Cburnett
-                    </button>
-                    <button className={`piece-set-btn${pieceStyle === 'minimal' ? ' active' : ''}`} onClick={() => setPieceStyle('minimal')}>
-                      <span className="piece-set-preview" style={{ fontSize: '1.1rem', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>K</span>
-                      Letters
-                    </button>
-                  </div>
-                </div>
-
-                <div className="settings-section">
-                  <span className="settings-section-label">Board View</span>
-                  <div className="piece-set-grid">
-                    <button className={`piece-set-btn${!board3d ? ' active' : ''}`} onClick={() => setBoard3d(false)}>
-                      <span className="piece-set-preview">⬛</span>
-                      Flat
-                    </button>
-                    <button className={`piece-set-btn${board3d ? ' active' : ''}`} onClick={() => setBoard3d(true)}>
-                      <span className="piece-set-preview">🎲</span>
-                      3D
-                    </button>
-                  </div>
-                </div>
-
-                <div className="settings-section">
-                  <span className="settings-section-label">Voice Chat</span>
-                  <div className="piece-set-grid">
-                    <button
-                      className={`piece-set-btn${!liveVoiceChat ? ' active' : ''}`}
-                      onClick={() => setLiveVoiceChat(false)}
-                    >
-                      <span className="piece-set-preview">🔇</span>
-                      Off
-                    </button>
-                    <button
-                      className={`piece-set-btn${liveVoiceChat ? ' active' : ''}`}
-                      onClick={() => setLiveVoiceChat(true)}
-                    >
-                      <span className="piece-set-preview">🎤</span>
-                      Peer Voice
-                    </button>
-                  </div>
-                </div>
-
-                {user && (
-                  <button
-                    className="btn btn-ghost"
-                    style={{ width: '100%', marginTop: '4px' }}
-                    onClick={() => setProfileModalUid(user.uid)}
-                  >
-                    Edit My Profile
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* ── Rankings Tab ── */}
-            {activeTab === 'rankings' && firebaseEnabled && (
-              <div className="tab-panel">
-                <LeaderboardPanel
-                  currentUser={user}
-                  onPlayerClick={(p) => setProfileModalUid(p.id)}
-                  embedded
-                />
-              </div>
-            )}
-
-            {/* ── Social Tab ── */}
-            {activeTab === 'social' && (
-              <SocialTab
-                currentUser={user}
-                currentUserName={displayName}
-                currentUserPhotoURL={profile?.photoURL || null}
-                onPlayerClick={(p) => setProfileModalUid(p.id)}
-                pendingDm={pendingDm}
-                onPendingDmHandled={() => setPendingDm(null)}
-                onChallengeFriend={handleChallengeFriend}
-              />
-            )}
-
-          </div>
-        </div>
-      </main>
-
-      <footer className="footer">
-        <div className="footer-brand">
-          <span className="footer-brand-dot" />
-          Knight-Aura Chess
-        </div>
-        <span className="footer-meta">Chess reimagined — unleash the power of the horse</span>
-      </footer>
-        </>
-      )}
+      <AppPageRouter
+        currentPage={currentPage}
+        onNavigate={navigateToPage}
+        homePageProps={homePageProps}
+        signInPageProps={signInPageProps}
+        boardShellProps={boardShellProps}
+        sidebarProps={sidebarProps}
+      />
 
       {/* ── Profile Modal ── */}
       {profileModalUid && (
-        <UserProfileModal
-          profileUid={profileModalUid}
-          currentUser={user}
-          currentUserName={displayName}
-          onClose={() => setProfileModalUid(null)}
-          onOpenDm={({ chatId, partnerUid, partnerName }) => {
-            setPendingDm({ chatId, partnerUid, partnerName });
-            setProfileModalUid(null);
-            setActiveTab('social');
-          }}
-        />
+        <Suspense fallback={null}>
+          <UserProfileModal
+            profileUid={profileModalUid}
+            currentUser={user}
+            currentUserName={displayName}
+            onClose={() => setProfileModalUid(null)}
+            onOpenDm={({ chatId, partnerUid, partnerName }) => {
+              setPendingDm({ chatId, partnerUid, partnerName });
+              setProfileModalUid(null);
+              setActiveTab('social');
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/KnightJumpChess.js",
   "scripts": {
-    "test": "node src/test.js",
+    "test": "node --test src/engine.test.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
