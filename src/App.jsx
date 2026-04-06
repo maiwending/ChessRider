@@ -68,6 +68,21 @@ const DEFAULT_TIME_CONTROL = 300;
 
 const createNewGame = () => new KnightJumpChess();
 
+const buildMoveAnimationPayload = (board, moveLike, actor = 'self') => {
+  if (!board || !moveLike?.from || !moveLike?.to) return null;
+  const movingPiece = board.get(moveLike.from);
+  const capturedPiece = board.get(moveLike.to);
+  if (!movingPiece) return null;
+  return {
+    key: `${moveLike.from}-${moveLike.to}-${moveLike.san || ''}-${Date.now()}`,
+    from: moveLike.from,
+    to: moveLike.to,
+    actor,
+    movingPiece: { color: movingPiece.color, type: movingPiece.type },
+    capturedPiece: capturedPiece ? { color: capturedPiece.color, type: capturedPiece.type } : null,
+  };
+};
+
 const formatTurn = (turn) => (turn === 'w' ? 'White' : 'Black');
 
 const formatTime = (seconds) => {
@@ -177,6 +192,7 @@ export default function App() {
   const [clockWhite, setClockWhite] = useState(null);
   const [clockBlack, setClockBlack] = useState(null);
   const [localResult, setLocalResult] = useState(null);
+  const [moveAnimation, setMoveAnimation] = useState(null);
   const timeoutFiredRef = useRef(false);
   const localResultRef = useRef(null);
   const lastAiFenRef = useRef(null);
@@ -185,6 +201,9 @@ export default function App() {
   const isBotOnlineGameRef = useRef(false);
   const botMovePendingRef = useRef(false);
   const [pendingBotMove, setPendingBotMove] = useState(null);
+  const gameRef = useRef(game);
+  const lastAnimatedMoveRef = useRef(null);
+  const hasLoadedOnlineGameRef = useRef(false);
   const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'medium').toLowerCase();
   const envAiDifficulty = AI_DIFFICULTY_LEVELS.includes(rawAiDifficulty)
     ? rawAiDifficulty
@@ -192,6 +211,29 @@ export default function App() {
   const [aiDifficulty, setAiDifficulty] = useState(envAiDifficulty);
 
   const isOnline = Boolean(gameId);
+
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    if (!moveAnimation) return undefined;
+    const timer = setTimeout(() => {
+      setMoveAnimation(null);
+      lastAnimatedMoveRef.current = null;
+    }, moveAnimation.capturedPiece ? 1150 : 900);
+    return () => clearTimeout(timer);
+  }, [moveAnimation]);
+
+  const playMoveAnimation = useCallback((board, moveLike, actor = 'self') => {
+    if (!board3d) return;
+    const animation = buildMoveAnimationPayload(board, moveLike, actor);
+    if (!animation) return;
+    const dedupeKey = `${animation.from}-${animation.to}-${moveLike.san || ''}`;
+    if (lastAnimatedMoveRef.current === dedupeKey) return;
+    lastAnimatedMoveRef.current = dedupeKey;
+    setMoveAnimation(animation);
+  }, [board3d]);
 
   const playerColor = useMemo(() => {
     if (!user || !gameData) return null;
@@ -351,8 +393,9 @@ export default function App() {
   // ── Firebase listeners ──
   useEffect(() => {
     if (!gameId) return undefined;
-    const gameRef = doc(db, GAMES_COLLECTION, gameId);
-    const unsub = onSnapshot(gameRef, (snap) => {
+    hasLoadedOnlineGameRef.current = false;
+    const gameDocRef = doc(db, GAMES_COLLECTION, gameId);
+    const unsub = onSnapshot(gameDocRef, (snap) => {
       if (!snap.exists()) {
         setGameId(null);
         setGameData(null);
@@ -362,7 +405,17 @@ export default function App() {
       const data = { id: snap.id, ...snap.data() };
       setGameData(data);
       if (data.fen) {
+        if (hasLoadedOnlineGameRef.current && data.lastMove) {
+          const snapshotMoveKey = `${data.lastMove.from}-${data.lastMove.to}-${data.lastMove.san || ''}`;
+          if (snapshotMoveKey !== lastAnimatedMoveRef.current) {
+            const actor =
+              data.lastMove.by === user?.uid ? 'self' :
+              data.lastMove.by?.startsWith?.('bot_') ? 'ai' : 'opponent';
+            playMoveAnimation(gameRef.current, data.lastMove, actor);
+          }
+        }
         setGame(new KnightJumpChess(data.fen));
+        hasLoadedOnlineGameRef.current = true;
       }
       if (data.lastMove) {
         setLastMove({ from: data.lastMove.from, to: data.lastMove.to });
@@ -373,7 +426,7 @@ export default function App() {
       setMatchStatus(data.status || 'active');
     });
     return () => unsub();
-  }, [gameId]);
+  }, [gameId, playMoveAnimation, user?.uid]);
 
   useEffect(() => {
     // authReady guards against the brief window where user is null while Firebase
@@ -468,9 +521,11 @@ export default function App() {
               (!msg.promotion || m.promotion === msg.promotion));
 
           if (aiMoveObj) {
+            playMoveAnimation(prevGame, aiMoveObj, 'ai');
             gameCopy.move(aiMoveObj);
           } else {
             // Fallback: try direct move
+            playMoveAnimation(prevGame, msg, 'ai');
             const result = gameCopy.move({ from: msg.from, to: msg.to, promotion: msg.promotion || 'q' });
             if (!result) {
               console.error('AI returned invalid move:', msg);
@@ -513,7 +568,7 @@ export default function App() {
       worker.terminate();
       aiWorkerRef.current = null;
     };
-  }, []);
+  }, [playMoveAnimation]);
 
   const requestAiMove = useCallback((fen, _history, _timestamps, forceDifficulty) => {
     if (!aiWorkerRef.current) return;
@@ -626,6 +681,8 @@ export default function App() {
     setMoveTimestamps([{ white: 0, black: 0 }]);
     setCurrentMoveStartTime(Date.now());
     setLocalResult(null);
+    setMoveAnimation(null);
+    lastAnimatedMoveRef.current = null;
   };
 
   const handleSquareClick = (square) => {
@@ -686,6 +743,7 @@ export default function App() {
 
   const handleLocalMove = async (moveObj) => {
     const gameCopy = new KnightJumpChess(game.fen());
+    playMoveAnimation(game, moveObj, 'self');
     gameCopy.move(moveObj);
     setGame(gameCopy);
     const newHistory = [...moveHistory, moveObj.san];
@@ -738,6 +796,7 @@ export default function App() {
           promotion: moveObj.promotion || 'q'
         });
         if (!moveResult) throw new Error('Illegal move');
+        playMoveAnimation(new KnightJumpChess(data.fen), moveResult, 'self');
 
         const newHistory = [
           ...(data.moveHistory || []),
@@ -1534,6 +1593,7 @@ export default function App() {
             flipped={flipped}
             inCheck={inCheck}
             board3d={board3d}
+            moveAnimation={moveAnimation}
           />
 
           {/* Bottom player bar */}

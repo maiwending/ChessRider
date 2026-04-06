@@ -30,6 +30,53 @@ function buildAuraGrid() {
 
 const auraGrid = buildAuraGrid();
 
+const tutorials = [
+  {
+    title: '1. Build an Aura Net',
+    tag: 'Opening',
+    icon: '♞',
+    summary: 'Start by placing knights where they empower several allies at once.',
+    points: [
+      'Knights near the center project the largest useful aura.',
+      'Try to let one knight empower a rook or queen and a pawn at the same time.',
+      'Do not rush a knight to the rim unless it creates a concrete jump tactic.'
+    ]
+  },
+  {
+    title: '2. Attack Behind the Blocker',
+    tag: 'Tactics',
+    icon: '⤴',
+    summary: 'A defended blocker can become a liability when your sliding piece can leap it.',
+    points: [
+      'Look for enemy pawns or minor pieces standing in front of more valuable targets.',
+      'Rooks and queens are especially dangerous when their file or diagonal has one blocker.',
+      'Before jumping, check whether the landing square is safe and whether the line opens mate threats.'
+    ]
+  },
+  {
+    title: '3. Defend by Breaking the Aura',
+    tag: 'Defense',
+    icon: '🛡',
+    summary: 'Often the best defense is not the blocker itself, but removing the knight that grants the jump.',
+    points: [
+      'If an enemy attack depends on an aura square, trade or chase away the supporting knight.',
+      'When you cannot remove the knight, place a second blocker so one jump is not enough.',
+      'Watch for discovered attacks after a jump and secure your king first.'
+    ]
+  },
+  {
+    title: '4. Use Pawns as Launch Pieces',
+    tag: 'Practical',
+    icon: '♙',
+    summary: 'Aura-enabled pawns create unusual breakthroughs and fork ideas.',
+    points: [
+      'A pawn that jumps a blocker can crack open files much earlier than standard chess allows.',
+      'Passed pawns near a knight are more dangerous because blockers are less reliable.',
+      'If your pawn jump opens a line for a rook or queen, calculate both threats together.'
+    ]
+  }
+];
+
 export default function LearnPage({ onBack }) {
   return (
     <div className="learn-page">
@@ -224,6 +271,32 @@ export default function LearnPage({ onBack }) {
             <strong>The Limit</strong>
             <p>One jump per move — the second blocker holds the line</p>
           </div>
+        </div>
+      </section>
+
+      <section className="learn-tutorials">
+        <h3>Tutorials</h3>
+        <p className="learn-tutorials-intro">
+          Use these short lessons to start seeing Knight-Aura ideas during real games.
+        </p>
+        <div className="learn-tutorial-grid">
+          {tutorials.map((tutorial) => (
+            <article key={tutorial.title} className="learn-tutorial-card">
+              <div className="learn-tutorial-head">
+                <span className="learn-tutorial-icon" aria-hidden="true">{tutorial.icon}</span>
+                <div>
+                  <span className="learn-tutorial-tag">{tutorial.tag}</span>
+                  <h4>{tutorial.title}</h4>
+                </div>
+              </div>
+              <p>{tutorial.summary}</p>
+              <ul className="learn-tutorial-points">
+                {tutorial.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
         </div>
       </section>
 

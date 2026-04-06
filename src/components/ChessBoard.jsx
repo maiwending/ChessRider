@@ -11,28 +11,11 @@ import bb from '../assets/chess/cburnett/Chess_bdt45.svg';
 import br from '../assets/chess/cburnett/Chess_rdt45.svg';
 import bq from '../assets/chess/cburnett/Chess_qdt45.svg';
 import bk from '../assets/chess/cburnett/Chess_kdt45.svg';
-import wp3d from '../assets/chess/blue/Chess_pbg45.svg';
-import wn3d from '../assets/chess/blue/Chess_nbg45.svg';
-import wb3d from '../assets/chess/blue/Chess_bbg45.svg';
-import wr3d from '../assets/chess/blue/Chess_rbg45.svg';
-import wq3d from '../assets/chess/blue/Chess_qbt45.svg';
-import wk3d from '../assets/chess/blue/Chess_kbt45.svg';
-import bp3d from '../assets/chess/blue/Chess_pbt45.svg';
-import bn3d from '../assets/chess/blue/Chess_nbt45.svg';
-import bb3d from '../assets/chess/blue/Chess_bbt45.svg';
-import br3d from '../assets/chess/blue/Chess_rbt45.svg';
-import bq3d from '../assets/chess/blue/Chess_qbt45.svg';
-import bk3d from '../assets/chess/blue/Chess_kbt45.svg';
 import '../styles/ChessBoard.css';
 
-const classicPieceSprites = {
+const pieceSprites = {
   w: { p: wp, n: wn, b: wb, r: wr, q: wq, k: wk },
   b: { p: bp, n: bn, b: bb, r: br, q: bq, k: bk }
-};
-
-const board3dPieceSprites = {
-  w: { p: wp3d, n: wn3d, b: wb3d, r: wr3d, q: wq3d, k: wk3d },
-  b: { p: bp3d, n: bn3d, b: bb3d, r: br3d, q: bq3d, k: bk3d }
 };
 
 const pieceLetters = {
@@ -52,6 +35,7 @@ export default function ChessBoard({
   flipped,
   inCheck,
   board3d,
+  moveAnimation,
 }) {
   const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const ranksBase = ['8', '7', '6', '5', '4', '3', '2', '1'];
@@ -117,8 +101,46 @@ export default function ChessBoard({
   const checkSquare = getCheckSquare();
 
   const themeClass = theme?.startsWith('custom:') ? 'theme-custom' : `theme-${theme || 'classic'}`;
-  const effectivePieceStyle = board3d ? 'svg' : pieceStyle;
-  const activePieceSprites = board3d ? board3dPieceSprites : classicPieceSprites;
+  const effectivePieceStyle = pieceStyle;
+
+  const getSquareCenter = (square) => {
+    if (!square) return null;
+    const file = square[0];
+    const rank = square[1];
+    const col = files.indexOf(file);
+    const row = ranks.indexOf(rank);
+    if (col < 0 || row < 0) return null;
+    return {
+      x: `${(col + 0.5) * 12.5}%`,
+      y: `${(row + 0.5) * 12.5}%`,
+    };
+  };
+
+  const moveFromCenter = getSquareCenter(moveAnimation?.from);
+  const moveToCenter = getSquareCenter(moveAnimation?.to);
+  const selectedHandCenter = board3d && selectedSquare && !moveAnimation ? getSquareCenter(selectedSquare) : null;
+  const selectedPiece = board3d && selectedSquare && !moveAnimation ? game.get(selectedSquare) : null;
+  const moveDx = moveFromCenter && moveToCenter ? `calc(${moveToCenter.x} - ${moveFromCenter.x})` : '0px';
+  const moveDy = moveFromCenter && moveToCenter ? `calc(${moveToCenter.y} - ${moveFromCenter.y})` : '0px';
+
+  const renderPieceVisual = (piece, className, style) => {
+    if (effectivePieceStyle === 'svg') {
+      return (
+        <img
+          className={className}
+          style={style}
+          src={pieceSprites[piece.color][piece.type]}
+          alt=""
+          draggable="false"
+        />
+      );
+    }
+    return (
+      <span className={`${className} board-hand-piece--text piece piece--${piece.color}`} style={style}>
+        {pieceLetters[piece.color][piece.type]}
+      </span>
+    );
+  };
 
   return (
     <div
@@ -167,14 +189,9 @@ export default function ChessBoard({
                     aria-label={`Square ${square}`}
                   >
                     {piece && (
-                      <span className={`piece-shell${isAuraPiece ? ' piece-shell--aura' : ''}${board3d && isSelected ? ' piece-shell--holding' : ''}`}>
+                      <span className={`piece-shell${isAuraPiece ? ' piece-shell--aura' : ''}`}>
                         {effectivePieceStyle === 'svg' ? (
-                          <img
-                            className="piece-image"
-                            src={activePieceSprites[piece.color][piece.type]}
-                            alt=""
-                            draggable="false"
-                          />
+                          renderPieceVisual(piece, 'piece-image')
                         ) : (
                           <span className={`piece piece--${piece.color}`}>
                             {pieceLetters[piece.color][piece.type]}
@@ -194,6 +211,39 @@ export default function ChessBoard({
               })
             )}
           </div>
+          {board3d && selectedHandCenter && selectedPiece && (
+            <div
+              className="board-hand-overlay board-hand-overlay--selected"
+              style={{ '--hand-x': selectedHandCenter.x, '--hand-y': selectedHandCenter.y }}
+            >
+              <div className="board-hand board-hand--idle" />
+              {renderPieceVisual(selectedPiece, 'board-hand-piece board-hand-piece--idle')}
+            </div>
+          )}
+          {board3d && moveAnimation && moveFromCenter && moveToCenter && (
+            <div
+              key={moveAnimation.key}
+              className={`board-hand-overlay board-hand-overlay--move board-hand-overlay--${moveAnimation.actor}`}
+              style={{
+                '--hand-x': moveFromCenter.x,
+                '--hand-y': moveFromCenter.y,
+                '--move-dx': moveDx,
+                '--move-dy': moveDy,
+                '--drop-x': '38px',
+                '--drop-y': '18px',
+              }}
+            >
+              <div className="board-hand board-hand--move" />
+              {renderPieceVisual(moveAnimation.movingPiece, 'board-hand-piece board-hand-piece--move')}
+              {moveAnimation.capturedPiece && (
+                renderPieceVisual(
+                  moveAnimation.capturedPiece,
+                  'board-captured-piece',
+                  { '--capture-x': moveToCenter.x, '--capture-y': moveToCenter.y }
+                )
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <p>Loading game...</p>
