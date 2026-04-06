@@ -376,6 +376,24 @@ export default function GameSidebar({
                   <span className="piece-set-note">Auto changes by season</span>
                 </button>
               </div>
+              {settingsProps.seasonalDecorations && (
+                <div className="settings-slider" style={{ marginTop: '14px' }}>
+                  <input
+                    className="settings-slider__input"
+                    type="range"
+                    min="20"
+                    max="180"
+                    step="10"
+                    value={settingsProps.seasonalDecorationDensity}
+                    onChange={(event) => settingsProps.setSeasonalDecorationDensity(Number.parseInt(event.target.value, 10))}
+                  />
+                  <div className="settings-slider__meta">
+                    <span>Less</span>
+                    <strong>{settingsProps.seasonalDecorationDensity}%</strong>
+                    <span>More</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {settingsProps.user && (

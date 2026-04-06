@@ -163,6 +163,7 @@ export default function App() {
   const [moveHistory, setMoveHistory] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
+  const [pendingPromotion, setPendingPromotion] = useState(null);
   const [lastMove, setLastMove] = useState(null);
   const [flipped, setFlipped] = useState(false);
   const [gameId, setGameIdRaw] = useState(() => localStorage.getItem('cr_gameId') || null);
@@ -184,6 +185,11 @@ export default function App() {
   const [pieceStyle, setPieceStyle] = useState('svg');
   const [liveVoiceChat, setLiveVoiceChat] = useState(() => localStorage.getItem('cr_live_voice_chat') === 'true');
   const [seasonalDecorations, setSeasonalDecorations] = useState(() => localStorage.getItem('cr_seasonal_decorations') !== 'false');
+  const [seasonalDecorationDensity, setSeasonalDecorationDensity] = useState(() => {
+    const raw = Number.parseInt(localStorage.getItem('cr_seasonal_decoration_density') || '100', 10);
+    if (Number.isNaN(raw)) return 100;
+    return Math.min(180, Math.max(20, raw));
+  });
   const [waitingGames, setWaitingGames] = useState([]);
   const [joinGameId, setJoinGameId] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -310,6 +316,9 @@ export default function App() {
   }, [boardCornerRadius]);
   useEffect(() => { localStorage.setItem('cr_live_voice_chat', liveVoiceChat ? 'true' : 'false'); }, [liveVoiceChat]);
   useEffect(() => { localStorage.setItem('cr_seasonal_decorations', seasonalDecorations ? 'true' : 'false'); }, [seasonalDecorations]);
+  useEffect(() => {
+    localStorage.setItem('cr_seasonal_decoration_density', String(seasonalDecorationDensity));
+  }, [seasonalDecorationDensity]);
 
   const customThemeVars = useMemo(() => {
     if (!theme.startsWith('custom:')) return null;
@@ -736,6 +745,7 @@ export default function App() {
     setMoveHistory([]);
     setSelectedSquare(null);
     setLegalMoves([]);
+    setPendingPromotion(null);
     setLastMove(null);
     setMoveTimestamps([{ white: 0, black: 0 }]);
     setCurrentMoveStartTime(Date.now());
@@ -745,6 +755,7 @@ export default function App() {
   };
 
   const handleSquareClick = (square) => {
+    if (pendingPromotion) return;
     if (isOnline && playerColor !== game.turn()) return;
     if (aiEnabled && !isOnline && game.turn() === 'b') return; // block moving AI's pieces
 
@@ -767,9 +778,21 @@ export default function App() {
     }
 
     if (legalMoves.includes(square)) {
-      const moveObj = game
+      const candidateMoves = game
         .moves({ square: selectedSquare, verbose: true })
-        .find((m) => m.to === square);
+        .filter((m) => m.to === square);
+
+      const promotionMoves = candidateMoves.filter((m) => m.promotion);
+      if (promotionMoves.length > 1) {
+        setPendingPromotion({
+          from: selectedSquare,
+          to: square,
+          moves: promotionMoves,
+        });
+        return;
+      }
+
+      const moveObj = candidateMoves[0];
 
       if (!moveObj) {
         setSelectedSquare(null);
@@ -785,6 +808,7 @@ export default function App() {
 
       setSelectedSquare(null);
       setLegalMoves([]);
+      setPendingPromotion(null);
     } else {
       const piecesOnSquare = game.get(square);
       if (piecesOnSquare && piecesOnSquare.color === game.turn()) {
@@ -976,6 +1000,25 @@ export default function App() {
       setMovePending(false);
     }
   };
+
+  const handlePromotionChoice = useCallback((promotion) => {
+    if (!pendingPromotion) return;
+    const moveObj = pendingPromotion.moves.find((move) => move.promotion === promotion) || pendingPromotion.moves[0];
+    if (!moveObj) {
+      setPendingPromotion(null);
+      return;
+    }
+
+    if (isOnline && gameId) {
+      handleOnlineMove(moveObj);
+    } else {
+      handleLocalMove(moveObj);
+    }
+
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setPendingPromotion(null);
+  }, [gameId, isOnline, pendingPromotion]);
 
   const handleBotOnlineMove = useCallback(async (moveMsg) => {
     if (!gameId || !db) return;
@@ -1602,6 +1645,9 @@ export default function App() {
     flipped,
     inCheck,
     moveAnimation,
+    pendingPromotion,
+    onChoosePromotion: handlePromotionChoice,
+    onCancelPromotion: () => setPendingPromotion(null),
     onFlipBoard: () => setFlipped(!flipped),
     onNewGame: resetPractice,
     onStopAi: () => {
@@ -1689,6 +1735,8 @@ export default function App() {
       setLiveVoiceChat,
       seasonalDecorations,
       setSeasonalDecorations,
+      seasonalDecorationDensity,
+      setSeasonalDecorationDensity,
       user,
       onEditProfile: () => setProfileModalUid(user.uid),
     },
@@ -1720,7 +1768,7 @@ export default function App() {
         onSignOut={signOut}
       />
       <div className="left-bg-art" aria-hidden="true" />
-      {seasonalDecorations && <SeasonDecorations />}
+      {seasonalDecorations && <SeasonDecorations density={seasonalDecorationDensity} />}
       <AppPageRouter
         currentPage={currentPage}
         onNavigate={navigateToPage}

@@ -15,11 +15,12 @@ const DECORATION_MAP = {
   autumn: { icon: '❋', count: 14, label: 'Autumn' },
 };
 
-export default function SeasonDecorations() {
+export default function SeasonDecorations({ density = 100 }) {
   const season = getSeason();
   const config = DECORATION_MAP[season];
+  const itemCount = Math.max(4, Math.round((config.count * density) / 100));
   const items = useMemo(
-    () => Array.from({ length: config.count }, (_, index) => ({
+    () => Array.from({ length: itemCount }, (_, index) => ({
       id: `${season}-${index}`,
       left: `${(index * 97) % 100}%`,
       delay: `${(index % 7) * 0.8}s`,
@@ -27,7 +28,7 @@ export default function SeasonDecorations() {
       scale: 0.7 + (index % 4) * 0.14,
       drift: `${((index % 5) - 2) * 22}px`,
     })),
-    [config.count, season]
+    [itemCount, season]
   );
 
   return (

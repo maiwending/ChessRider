@@ -102,22 +102,20 @@ export default function PlayTabPanel({
         </>
       ) : (
         <>
-          {user && (
-            <div style={{ marginBottom: '10px' }}>
-              <p className="play-section-label" style={{ marginBottom: '6px' }}>⏱ Time Control</p>
-              <div className="time-control-grid">
-                {timeControls.map((control) => (
-                  <button
-                    key={control.seconds}
-                    className={`time-control-btn${selectedTimeControl === control.seconds ? ' active' : ''}`}
-                    onClick={() => onSelectTimeControl(control.seconds)}
-                  >
-                    {control.label}
-                  </button>
-                ))}
-              </div>
+          <div style={{ marginBottom: '10px' }}>
+            <p className="play-section-label" style={{ marginBottom: '6px' }}>⏱ Time Control</p>
+            <div className="time-control-grid">
+              {timeControls.map((control) => (
+                <button
+                  key={control.seconds}
+                  className={`time-control-btn${selectedTimeControl === control.seconds ? ' active' : ''}`}
+                  onClick={() => onSelectTimeControl(control.seconds)}
+                >
+                  {control.label}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
           {user ? (
             <button className="btn btn-primary" onClick={startMatchmaking} style={{ width: '100%', marginBottom: 8 }}>
               Find Online Match
