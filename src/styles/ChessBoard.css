@@ -469,11 +469,11 @@
 }
 
 .board-hand-overlay--active .board-hand--move {
-  transform: translateY(calc(var(--carry-lift, 4px) * -1)) rotate(var(--hand-tilt, -2deg)) scale(1);
+  transform: translateY(0) rotate(var(--hand-tilt, -2deg)) scale(1);
 }
 
 .board-hand-overlay--active .board-hand-piece--move {
-  transform: translateY(calc((var(--carry-lift, 4px) + 1px) * -1)) rotate(var(--piece-tilt, 0deg)) scale(var(--piece-scale, 1.03));
+  transform: translateY(0) rotate(var(--piece-tilt, 0deg)) scale(var(--piece-scale, 1));
 }
 
 .board-captured-piece {
@@ -494,7 +494,7 @@
   left: 0;
   top: 0;
   opacity: 0;
-  transform: translateY(calc((var(--carry-lift, 4px) + 1px) * -1)) rotate(var(--piece-tilt, 0deg)) scale(0.98);
+  transform: translateY(0) rotate(var(--piece-tilt, 0deg)) scale(0.98);
 }
 
 .board-captured-piece--active {
@@ -513,7 +513,7 @@
 
 @keyframes captured-throw-side {
   0% {
-    transform: translate3d(0, calc((var(--carry-lift, 4px) + 1px) * -1), 0) rotate(var(--piece-tilt, 0deg)) scale(0.98);
+    transform: translate3d(0, 0, 0) rotate(var(--piece-tilt, 0deg)) scale(0.98);
     opacity: 0;
   }
   8% {

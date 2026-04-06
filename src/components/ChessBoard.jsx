@@ -142,7 +142,7 @@ export default function ChessBoard({
     let frame = 0;
     let start = 0;
     const travelDuration = 780;
-    const settleDuration = 160;
+    const settleDuration = 0;
     const tick = (timestamp) => {
       if (!start) start = timestamp;
       const elapsed = timestamp - start;
@@ -175,13 +175,13 @@ export default function ChessBoard({
     const sway = Math.sin(eased * Math.PI) * Math.min(distance * 0.01, 0.28);
     const offsetX = (-dy / distance) * sway;
     const offsetY = (dx / distance) * sway;
-    const lead = Math.sin(eased * Math.PI) * Math.min(distance * 0.02, 0.35);
+    const lead = Math.sin(eased * Math.PI) * Math.min(distance * 0.018, 0.3);
     const leadX = (dx / distance) * lead;
     const leadY = (dy / distance) * lead;
-    const lift = 1.2 + Math.sin(eased * Math.PI) * 2.2;
+    const lift = 0;
     const handTilt = -12 + eased * 14;
-    const pieceTilt = -1 + eased * 2;
-    const pieceScale = 1.005 + Math.sin(eased * Math.PI) * 0.015;
+    const pieceTilt = 0;
+    const pieceScale = 1;
     return {
       x: `${startX + dx * eased + offsetX + leadX}%`,
       y: `${startY + dy * eased + offsetY + leadY}%`,
@@ -190,8 +190,8 @@ export default function ChessBoard({
       handTilt,
       pieceTilt,
       pieceScale,
-      gripX: `${-6 + lead * 5}px`,
-      gripY: `${1 + Math.sin(eased * Math.PI) * 2}px`,
+      gripX: `${-5 + lead * 4}px`,
+      gripY: '0px',
     };
   })();
 
