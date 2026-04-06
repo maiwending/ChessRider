@@ -11,7 +11,6 @@ export default function HomePage({
     <main className="home-page">
       <section className="home-hero">
         <div className="home-hero-copy">
-          <span className="home-kicker">First Move</span>
           <h2>Knight aura turns nearby pieces into jump-capable attackers.</h2>
           <p className="home-summary">
             Start a guest board instantly, sign in for live play, or learn the rule twist before you sit down.
