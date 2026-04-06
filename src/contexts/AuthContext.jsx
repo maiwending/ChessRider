@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInAnonymously as firebaseSignInAnonymously,
   signInWithPopup,
   signOut as firebaseSignOut
@@ -166,6 +168,14 @@ export function AuthProvider({ children }) {
       signInWithGoogle: () => {
         if (!firebaseEnabled || !auth || !googleProvider) return firebaseNotReadyError();
         return signInWithPopup(auth, googleProvider);
+      },
+      signInWithEmail: (email, password) => {
+        if (!firebaseEnabled || !auth) return firebaseNotReadyError();
+        return signInWithEmailAndPassword(auth, email, password);
+      },
+      signUpWithEmail: (email, password) => {
+        if (!firebaseEnabled || !auth) return firebaseNotReadyError();
+        return createUserWithEmailAndPassword(auth, email, password);
       },
       signInAnonymously: () => {
         if (!firebaseEnabled || !auth) return firebaseNotReadyError();

@@ -56,6 +56,8 @@ const BOT_POOL = [
   { uid: 'bot_rowan_reyes',   name: 'Rowan Reyes' },
 ];
 
+const APP_BASE_PATH = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '';
+
 const TIME_CONTROLS = [
   { label: '1 min',  seconds: 60 },
   { label: '3 min',  seconds: 180 },
@@ -67,6 +69,21 @@ const TIME_CONTROLS = [
 const DEFAULT_TIME_CONTROL = 300;
 
 const createNewGame = () => new KnightJumpChess();
+
+const buildMoveAnimationPayload = (board, moveLike, actor = 'self') => {
+  if (!board || !moveLike?.from || !moveLike?.to) return null;
+  const movingPiece = board.get(moveLike.from);
+  const capturedPiece = board.get(moveLike.to);
+  if (!movingPiece) return null;
+  return {
+    key: `${moveLike.from}-${moveLike.to}-${moveLike.san || ''}-${Date.now()}`,
+    from: moveLike.from,
+    to: moveLike.to,
+    actor,
+    movingPiece: { color: movingPiece.color, type: movingPiece.type },
+    capturedPiece: capturedPiece ? { color: capturedPiece.color, type: capturedPiece.type } : null,
+  };
+};
 
 const formatTurn = (turn) => (turn === 'w' ? 'White' : 'Black');
 
@@ -85,60 +102,38 @@ const formatClock = (seconds) => {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 };
 
-const LEARN_STEPS = [
-  {
-    title: 'The Knight\'s Aura',
-    subtitle: 'Unleash the horse\'s power',
-    description: 'In conventional chess, only the knight can jump. In Knight-Aura Chess, that power radiates outward — any friendly piece inside the knight\'s aura inherits the ability to jump.',
-    board: [
-      ['','','','','',''],
-      ['','','♞','','',''],
-      ['','✦','','✦','',''],
-      ['✦','','','','✦',''],
-      ['','','','','',''],
-    ],
-    highlight: 'green',
-    caption: '✦ = squares empowered by the knight\'s aura',
-  },
-  {
-    title: 'Ride the Aura — Jump!',
-    subtitle: 'Leap over a single blocker',
-    description: 'A piece riding the knight\'s aura can jump over exactly one blocking piece along its normal move path, then keep sliding — or land for a capture.',
-    board: [
-      ['♖','','♟','','','♝'],
-      ['','','','','',''],
-    ],
-    highlight: 'blue',
-    caption: '♖ leaps over ♟ — lands anywhere beyond, or captures ♝',
-  },
-  {
-    title: 'One Jump Per Move',
-    subtitle: 'The horse\'s gift has limits',
-    description: 'The knight shares its jumping power for one leap only. After clearing one blocker, the next piece on that line stops you dead.',
-    board: [
-      ['♕','','♟','','♜','',''],
-      ['','','','','','',''],
-    ],
-    highlight: 'red',
-    caption: '♕ clears ♟ but ♜ holds the line — cannot pass.',
-  },
-  {
-    title: 'Every Piece Gets Wings',
-    subtitle: 'Pawns & kings leap too',
-    description: 'Even pawns and kings can feel the horse\'s power. Pawns near a knight jump one square forward over a blocker. Kings can jump one square in any safe direction.',
-    board: [
-      ['','♟','',''],
-      ['♙','','',''],
-      ['♞','','',''],
-    ],
-    highlight: 'green',
-    caption: '♙ flies over ♟ — carried by ♞\'s aura',
-  },
-];
+const getPageFromLocation = () => {
+  if (typeof window === 'undefined') return 'game';
+  if (/\/Tutorials\/?$/.test(window.location.pathname)) return 'tutorials';
+  if (/\/Learn\/?$/.test(window.location.pathname)) return 'learn';
+  return 'game';
+};
+
+const setBrowserPage = (page, replace = false) => {
+  if (typeof window === 'undefined') return;
+  const nextUrl = page === 'tutorials'
+    ? `${APP_BASE_PATH}/Tutorials`
+    : page === 'learn'
+      ? `${APP_BASE_PATH}/Learn`
+      : (APP_BASE_PATH ? `${APP_BASE_PATH}/` : '/');
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method](null, '', nextUrl);
+};
 
 export default function App() {
-  const { user, authReady, profile, displayName, rating, signInWithGoogle, signInAnonymously, signOut } = useAuth();
-  const [currentPage, setCurrentPage] = useState('game');
+  const {
+    user,
+    authReady,
+    profile,
+    displayName,
+    rating,
+    signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    signInAnonymously,
+    signOut
+  } = useAuth();
+  const [currentPage, setCurrentPage] = useState(() => getPageFromLocation());
   const [game, setGame] = useState(() => createNewGame());
   const [moveHistory, setMoveHistory] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
@@ -161,12 +156,17 @@ export default function App() {
   const [board3d, setBoard3d] = useState(() => localStorage.getItem('cr_3d') === 'true');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cr_dark') !== 'false');
   const [pieceStyle, setPieceStyle] = useState('svg');
+  const [liveVoiceChat, setLiveVoiceChat] = useState(() => localStorage.getItem('cr_live_voice_chat') === 'true');
   const [waitingGames, setWaitingGames] = useState([]);
   const [joinGameId, setJoinGameId] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiError, setAiError] = useState('');
   const [activeTab, setActiveTab] = useState('play');
+  const [authMode, setAuthMode] = useState('signin');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   const [profileModalUid, setProfileModalUid] = useState(null);
   const [pendingDm, setPendingDm] = useState(null);
   const [unreadDmCount, setUnreadDmCount] = useState(0);
@@ -177,6 +177,7 @@ export default function App() {
   const [clockWhite, setClockWhite] = useState(null);
   const [clockBlack, setClockBlack] = useState(null);
   const [localResult, setLocalResult] = useState(null);
+  const [moveAnimation, setMoveAnimation] = useState(null);
   const timeoutFiredRef = useRef(false);
   const localResultRef = useRef(null);
   const lastAiFenRef = useRef(null);
@@ -185,6 +186,9 @@ export default function App() {
   const isBotOnlineGameRef = useRef(false);
   const botMovePendingRef = useRef(false);
   const [pendingBotMove, setPendingBotMove] = useState(null);
+  const gameRef = useRef(game);
+  const lastAnimatedMoveRef = useRef(null);
+  const hasLoadedOnlineGameRef = useRef(false);
   const rawAiDifficulty = (import.meta.env.VITE_AI_DIFFICULTY || 'medium').toLowerCase();
   const envAiDifficulty = AI_DIFFICULTY_LEVELS.includes(rawAiDifficulty)
     ? rawAiDifficulty
@@ -193,12 +197,67 @@ export default function App() {
 
   const isOnline = Boolean(gameId);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPage(getPageFromLocation());
+    };
+    window.addEventListener('popstate', handlePopState);
+    setCurrentPage(getPageFromLocation());
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToPage = useCallback((page, replace = false) => {
+    setCurrentPage(page);
+    setBrowserPage(page, replace);
+  }, []);
+
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    if (!moveAnimation) return undefined;
+    const timer = setTimeout(() => {
+      setMoveAnimation(null);
+      lastAnimatedMoveRef.current = null;
+    }, moveAnimation.capturedPiece ? 1460 : 860);
+    return () => clearTimeout(timer);
+  }, [moveAnimation]);
+
+  const playMoveAnimation = useCallback((board, moveLike, actor = 'self') => {
+    if (!board3d) return;
+    const animation = buildMoveAnimationPayload(board, moveLike, actor);
+    if (!animation) return;
+    const dedupeKey = `${animation.from}-${animation.to}-${moveLike.san || ''}`;
+    if (lastAnimatedMoveRef.current === dedupeKey) return;
+    lastAnimatedMoveRef.current = dedupeKey;
+    setMoveAnimation(animation);
+  }, [board3d]);
+
   const playerColor = useMemo(() => {
     if (!user || !gameData) return null;
     if (gameData.whiteId === user.uid) return 'w';
     if (gameData.blackId === user.uid) return 'b';
     return null;
   }, [gameData, user]);
+
+  const handleEmailAuth = useCallback(async () => {
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError('Enter an email and password.');
+      return;
+    }
+    setAuthError('');
+    try {
+      if (authMode === 'signup') {
+        await signUpWithEmail(authEmail.trim(), authPassword);
+      } else {
+        await signInWithEmail(authEmail.trim(), authPassword);
+      }
+      setAuthPassword('');
+    } catch (error) {
+      setAuthError(error?.message || 'Authentication failed.');
+    }
+  }, [authEmail, authMode, authPassword, signInWithEmail, signUpWithEmail]);
 
   // Apply dark/light theme to document root
   useEffect(() => {
@@ -209,6 +268,7 @@ export default function App() {
   // Persist theme and 3D selections
   useEffect(() => { localStorage.setItem('cr_theme', theme); }, [theme]);
   useEffect(() => { localStorage.setItem('cr_3d', board3d ? 'true' : 'false'); }, [board3d]);
+  useEffect(() => { localStorage.setItem('cr_live_voice_chat', liveVoiceChat ? 'true' : 'false'); }, [liveVoiceChat]);
 
   const customThemeVars = useMemo(() => {
     if (!theme.startsWith('custom:')) return null;
@@ -351,8 +411,9 @@ export default function App() {
   // ── Firebase listeners ──
   useEffect(() => {
     if (!gameId) return undefined;
-    const gameRef = doc(db, GAMES_COLLECTION, gameId);
-    const unsub = onSnapshot(gameRef, (snap) => {
+    hasLoadedOnlineGameRef.current = false;
+    const gameDocRef = doc(db, GAMES_COLLECTION, gameId);
+    const unsub = onSnapshot(gameDocRef, (snap) => {
       if (!snap.exists()) {
         setGameId(null);
         setGameData(null);
@@ -362,7 +423,17 @@ export default function App() {
       const data = { id: snap.id, ...snap.data() };
       setGameData(data);
       if (data.fen) {
+        if (hasLoadedOnlineGameRef.current && data.lastMove) {
+          const snapshotMoveKey = `${data.lastMove.from}-${data.lastMove.to}-${data.lastMove.san || ''}`;
+          if (snapshotMoveKey !== lastAnimatedMoveRef.current) {
+            const actor =
+              data.lastMove.by === user?.uid ? 'self' :
+              data.lastMove.by?.startsWith?.('bot_') ? 'ai' : 'opponent';
+            playMoveAnimation(gameRef.current, data.lastMove, actor);
+          }
+        }
         setGame(new KnightJumpChess(data.fen));
+        hasLoadedOnlineGameRef.current = true;
       }
       if (data.lastMove) {
         setLastMove({ from: data.lastMove.from, to: data.lastMove.to });
@@ -373,7 +444,7 @@ export default function App() {
       setMatchStatus(data.status || 'active');
     });
     return () => unsub();
-  }, [gameId]);
+  }, [gameId, playMoveAnimation, user?.uid]);
 
   useEffect(() => {
     // authReady guards against the brief window where user is null while Firebase
@@ -468,9 +539,11 @@ export default function App() {
               (!msg.promotion || m.promotion === msg.promotion));
 
           if (aiMoveObj) {
+            playMoveAnimation(prevGame, aiMoveObj, 'ai');
             gameCopy.move(aiMoveObj);
           } else {
             // Fallback: try direct move
+            playMoveAnimation(prevGame, msg, 'ai');
             const result = gameCopy.move({ from: msg.from, to: msg.to, promotion: msg.promotion || 'q' });
             if (!result) {
               console.error('AI returned invalid move:', msg);
@@ -513,7 +586,7 @@ export default function App() {
       worker.terminate();
       aiWorkerRef.current = null;
     };
-  }, []);
+  }, [playMoveAnimation]);
 
   const requestAiMove = useCallback((fen, _history, _timestamps, forceDifficulty) => {
     if (!aiWorkerRef.current) return;
@@ -626,6 +699,8 @@ export default function App() {
     setMoveTimestamps([{ white: 0, black: 0 }]);
     setCurrentMoveStartTime(Date.now());
     setLocalResult(null);
+    setMoveAnimation(null);
+    lastAnimatedMoveRef.current = null;
   };
 
   const handleSquareClick = (square) => {
@@ -686,6 +761,7 @@ export default function App() {
 
   const handleLocalMove = async (moveObj) => {
     const gameCopy = new KnightJumpChess(game.fen());
+    playMoveAnimation(game, moveObj, 'self');
     gameCopy.move(moveObj);
     setGame(gameCopy);
     const newHistory = [...moveHistory, moveObj.san];
@@ -738,6 +814,7 @@ export default function App() {
           promotion: moveObj.promotion || 'q'
         });
         if (!moveResult) throw new Error('Illegal move');
+        playMoveAnimation(new KnightJumpChess(data.fen), moveResult, 'self');
 
         const newHistory = [
           ...(data.moveHistory || []),
@@ -1420,8 +1497,51 @@ export default function App() {
             </div>
           ) : (
             <div className="auth-actions">
-              <button className="btn btn-primary" onClick={signInWithGoogle}>Sign in</button>
-              <button className="btn btn-ghost" onClick={signInAnonymously}>Play as Guest</button>
+              <div className="auth-form">
+                <div className="auth-mode-toggle">
+                  <button
+                    className={`auth-mode-btn${authMode === 'signin' ? ' active' : ''}`}
+                    onClick={() => setAuthMode('signin')}
+                    type="button"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    className={`auth-mode-btn${authMode === 'signup' ? ' active' : ''}`}
+                    onClick={() => setAuthMode('signup')}
+                    type="button"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+                <div className="auth-form-row">
+                  <input
+                    className="select auth-input"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="Email"
+                    autoComplete="email"
+                  />
+                  <input
+                    className="select auth-input"
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleEmailAuth(); }}
+                    placeholder="Password"
+                    autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                  />
+                </div>
+                <div className="auth-form-row">
+                  <button className="btn btn-primary" onClick={handleEmailAuth}>
+                    {authMode === 'signup' ? 'Create Account' : 'Email Sign In'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={signInWithGoogle}>Google</button>
+                  <button className="btn btn-ghost" onClick={signInAnonymously}>Guest</button>
+                </div>
+                {authError && <div className="auth-error">{authError}</div>}
+              </div>
             </div>
           )}
         </div>
@@ -1432,7 +1552,9 @@ export default function App() {
 
       {/* ── Main Layout ── */}
       {currentPage === 'learn' ? (
-        <LearnPage onBack={() => setCurrentPage('game')} />
+        <LearnPage onBack={() => navigateToPage('game')} onOpenTutorials={() => navigateToPage('tutorials')} />
+      ) : currentPage === 'tutorials' ? (
+        <LearnPage onBack={() => navigateToPage('learn')} tutorialsOnly />
       ) : (
         <>
           <main className="layout">
@@ -1534,6 +1656,7 @@ export default function App() {
             flipped={flipped}
             inCheck={inCheck}
             board3d={board3d}
+            moveAnimation={moveAnimation}
           />
 
           {/* Bottom player bar */}
@@ -1606,7 +1729,13 @@ export default function App() {
 
           {/* Live game chat */}
           {isOnline && gameData?.status === 'active' && gameId && user && firebaseEnabled && (
-            <GameChat gameId={gameId} currentUser={user} currentUserName={displayName} />
+            <GameChat
+              gameId={gameId}
+              currentUser={user}
+              currentUserName={displayName}
+              liveVoiceChat={liveVoiceChat}
+              playerColor={playerColor}
+            />
           )}
         </section>
 
@@ -1634,8 +1763,8 @@ export default function App() {
               </button>
             ))}
             <button
-              className="tab-btn"
-              onClick={() => setCurrentPage('learn')}
+              className={`tab-btn ${currentPage === 'learn' || currentPage === 'tutorials' ? 'active' : ''}`}
+              onClick={() => navigateToPage('learn')}
             >
               <span className="tab-icon-wrap"><span className="tab-icon">📖</span></span>
               <span className="tab-label">Learn</span>
@@ -1986,6 +2115,26 @@ export default function App() {
                     <button className={`piece-set-btn${board3d ? ' active' : ''}`} onClick={() => setBoard3d(true)}>
                       <span className="piece-set-preview">🎲</span>
                       3D
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-section">
+                  <span className="settings-section-label">Voice Chat</span>
+                  <div className="piece-set-grid">
+                    <button
+                      className={`piece-set-btn${!liveVoiceChat ? ' active' : ''}`}
+                      onClick={() => setLiveVoiceChat(false)}
+                    >
+                      <span className="piece-set-preview">🔇</span>
+                      Off
+                    </button>
+                    <button
+                      className={`piece-set-btn${liveVoiceChat ? ' active' : ''}`}
+                      onClick={() => setLiveVoiceChat(true)}
+                    >
+                      <span className="piece-set-preview">🎤</span>
+                      Peer Voice
                     </button>
                   </div>
                 </div>
