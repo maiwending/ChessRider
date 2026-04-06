@@ -1219,20 +1219,31 @@ textarea.select {
 }
 
 .theme-swatch--add .theme-swatch-preview--add {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 0;
   margin: 0 auto;
-  font-size: 1.5rem;
-  font-weight: 300;
-  line-height: 1;
-  text-align: center;
+  font-size: 0;
   color: var(--text-dim);
   background: var(--bg-panel);
   border: 2px dashed var(--border);
   width: 36px;
   height: 36px;
   border-radius: var(--radius-xs);
+}
+
+.theme-swatch--add .theme-swatch-preview--add::before {
+  content: '+';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--text-dim);
+  transform: translateY(-1px);
 }
 
 /* ─── Theme Creator ─── */
