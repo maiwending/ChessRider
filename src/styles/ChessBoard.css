@@ -464,6 +464,8 @@
   top: 0;
   transform: scale(1.05);
   transition: transform 0.05s linear;
+  margin-left: calc(-21px + var(--piece-grip-x, -5px));
+  margin-top: calc(-4px + var(--piece-grip-y, 1px));
 }
 
 .board-hand-overlay--active .board-hand--move {

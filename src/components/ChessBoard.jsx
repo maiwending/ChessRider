@@ -172,21 +172,26 @@ export default function ChessBoard({
     const dx = endX - startX;
     const dy = endY - startY;
     const distance = Math.hypot(dx, dy) || 1;
-    const sway = Math.sin(eased * Math.PI) * Math.min(distance * 0.015, 0.42);
+    const sway = Math.sin(eased * Math.PI) * Math.min(distance * 0.01, 0.28);
     const offsetX = (-dy / distance) * sway;
     const offsetY = (dx / distance) * sway;
-    const lift = 2 + Math.sin(eased * Math.PI) * 4;
-    const handTilt = -9 + eased * 11;
-    const pieceTilt = -2 + eased * 4;
-    const pieceScale = 1.01 + Math.sin(eased * Math.PI) * 0.03;
+    const lead = Math.sin(eased * Math.PI) * Math.min(distance * 0.02, 0.35);
+    const leadX = (dx / distance) * lead;
+    const leadY = (dy / distance) * lead;
+    const lift = 1.2 + Math.sin(eased * Math.PI) * 2.2;
+    const handTilt = -12 + eased * 14;
+    const pieceTilt = -1 + eased * 2;
+    const pieceScale = 1.005 + Math.sin(eased * Math.PI) * 0.015;
     return {
-      x: `${startX + dx * eased + offsetX}%`,
-      y: `${startY + dy * eased + offsetY}%`,
+      x: `${startX + dx * eased + offsetX + leadX}%`,
+      y: `${startY + dy * eased + offsetY + leadY}%`,
       progress: eased,
       lift,
       handTilt,
       pieceTilt,
       pieceScale,
+      gripX: `${-6 + lead * 5}px`,
+      gripY: `${1 + Math.sin(eased * Math.PI) * 2}px`,
     };
   })();
 
@@ -306,6 +311,8 @@ export default function ChessBoard({
                 '--hand-tilt': `${currentMoveCenter?.handTilt || -8}deg`,
                 '--piece-tilt': `${currentMoveCenter?.pieceTilt || 0}deg`,
                 '--piece-scale': `${currentMoveCenter?.pieceScale || 1.02}`,
+                '--piece-grip-x': currentMoveCenter?.gripX || '-5px',
+                '--piece-grip-y': currentMoveCenter?.gripY || '1px',
                 '--drop-x': '54px',
                 '--drop-y': '22px',
               }}
