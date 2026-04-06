@@ -401,11 +401,11 @@
   top: var(--hand-y);
   width: 0;
   height: 0;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.12s ease-out;
 }
 
-.board-hand-overlay--active .board-hand-carry {
+.board-hand-overlay--move .board-hand-carry {
   opacity: 1;
 }
 
@@ -456,22 +456,22 @@
   left: 0;
   top: 0;
   transform: rotate(-8deg) scale(1);
-  transition: transform 0.08s linear;
+  transition: transform 0.05s linear;
 }
 
 .board-hand-piece--move {
   left: 0;
   top: 0;
   transform: scale(1.05);
-  transition: transform 0.08s linear;
+  transition: transform 0.05s linear;
 }
 
 .board-hand-overlay--active .board-hand--move {
-  transform: translateY(calc(var(--carry-lift, 10px) * -1)) rotate(2deg) scale(1);
+  transform: translateY(calc(var(--carry-lift, 4px) * -1)) rotate(var(--hand-tilt, -2deg)) scale(1);
 }
 
 .board-hand-overlay--active .board-hand-piece--move {
-  transform: translateY(calc((var(--carry-lift, 10px) + 2px) * -1)) scale(1.05);
+  transform: translateY(calc((var(--carry-lift, 4px) + 1px) * -1)) rotate(var(--piece-tilt, 0deg)) scale(var(--piece-scale, 1.03));
 }
 
 .board-captured-piece {
@@ -492,7 +492,7 @@
   left: 0;
   top: 0;
   opacity: 0;
-  transform: translateY(calc((var(--carry-lift, 10px) + 2px) * -1)) scale(0.98);
+  transform: translateY(calc((var(--carry-lift, 4px) + 1px) * -1)) rotate(var(--piece-tilt, 0deg)) scale(0.98);
 }
 
 .board-captured-piece--active {
@@ -511,7 +511,7 @@
 
 @keyframes captured-throw-side {
   0% {
-    transform: translate3d(0, calc((var(--carry-lift, 10px) + 2px) * -1), 0) rotate(-8deg) scale(0.98);
+    transform: translate3d(0, calc((var(--carry-lift, 4px) + 1px) * -1), 0) rotate(var(--piece-tilt, 0deg)) scale(0.98);
     opacity: 0;
   }
   8% {

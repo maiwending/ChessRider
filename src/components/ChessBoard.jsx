@@ -166,11 +166,27 @@ export default function ChessBoard({
     const startY = Number.parseFloat(moveFromCenter.y);
     const endX = Number.parseFloat(moveToCenter.x);
     const endY = Number.parseFloat(moveToCenter.y);
-    const eased = 1 - (1 - moveProgress) ** 3;
+    const eased = moveProgress < 0.5
+      ? 4 * moveProgress ** 3
+      : 1 - ((-2 * moveProgress + 2) ** 3) / 2;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.hypot(dx, dy) || 1;
+    const sway = Math.sin(eased * Math.PI) * Math.min(distance * 0.015, 0.42);
+    const offsetX = (-dy / distance) * sway;
+    const offsetY = (dx / distance) * sway;
+    const lift = 2 + Math.sin(eased * Math.PI) * 4;
+    const handTilt = -9 + eased * 11;
+    const pieceTilt = -2 + eased * 4;
+    const pieceScale = 1.01 + Math.sin(eased * Math.PI) * 0.03;
     return {
-      x: `${startX + (endX - startX) * eased}%`,
-      y: `${startY + (endY - startY) * eased}%`,
+      x: `${startX + dx * eased + offsetX}%`,
+      y: `${startY + dy * eased + offsetY}%`,
       progress: eased,
+      lift,
+      handTilt,
+      pieceTilt,
+      pieceScale,
     };
   })();
 
@@ -286,7 +302,10 @@ export default function ChessBoard({
               style={{
                 '--hand-x': currentMoveCenter?.x || moveFromCenter.x,
                 '--hand-y': currentMoveCenter?.y || moveFromCenter.y,
-                '--carry-lift': `${8 + (currentMoveCenter?.progress || 0) * 4}px`,
+                '--carry-lift': `${currentMoveCenter?.lift || 3}px`,
+                '--hand-tilt': `${currentMoveCenter?.handTilt || -8}deg`,
+                '--piece-tilt': `${currentMoveCenter?.pieceTilt || 0}deg`,
+                '--piece-scale': `${currentMoveCenter?.pieceScale || 1.02}`,
                 '--drop-x': '54px',
                 '--drop-y': '22px',
               }}
