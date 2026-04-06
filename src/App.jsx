@@ -163,6 +163,7 @@ export default function App() {
   const [moveHistory, setMoveHistory] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
+  const [pendingPromotion, setPendingPromotion] = useState(null);
   const [lastMove, setLastMove] = useState(null);
   const [flipped, setFlipped] = useState(false);
   const [gameId, setGameIdRaw] = useState(() => localStorage.getItem('cr_gameId') || null);
@@ -744,6 +745,7 @@ export default function App() {
     setMoveHistory([]);
     setSelectedSquare(null);
     setLegalMoves([]);
+    setPendingPromotion(null);
     setLastMove(null);
     setMoveTimestamps([{ white: 0, black: 0 }]);
     setCurrentMoveStartTime(Date.now());
@@ -753,6 +755,7 @@ export default function App() {
   };
 
   const handleSquareClick = (square) => {
+    if (pendingPromotion) return;
     if (isOnline && playerColor !== game.turn()) return;
     if (aiEnabled && !isOnline && game.turn() === 'b') return; // block moving AI's pieces
 
@@ -775,9 +778,21 @@ export default function App() {
     }
 
     if (legalMoves.includes(square)) {
-      const moveObj = game
+      const candidateMoves = game
         .moves({ square: selectedSquare, verbose: true })
-        .find((m) => m.to === square);
+        .filter((m) => m.to === square);
+
+      const promotionMoves = candidateMoves.filter((m) => m.promotion);
+      if (promotionMoves.length > 1) {
+        setPendingPromotion({
+          from: selectedSquare,
+          to: square,
+          moves: promotionMoves,
+        });
+        return;
+      }
+
+      const moveObj = candidateMoves[0];
 
       if (!moveObj) {
         setSelectedSquare(null);
@@ -793,6 +808,7 @@ export default function App() {
 
       setSelectedSquare(null);
       setLegalMoves([]);
+      setPendingPromotion(null);
     } else {
       const piecesOnSquare = game.get(square);
       if (piecesOnSquare && piecesOnSquare.color === game.turn()) {
@@ -984,6 +1000,25 @@ export default function App() {
       setMovePending(false);
     }
   };
+
+  const handlePromotionChoice = useCallback((promotion) => {
+    if (!pendingPromotion) return;
+    const moveObj = pendingPromotion.moves.find((move) => move.promotion === promotion) || pendingPromotion.moves[0];
+    if (!moveObj) {
+      setPendingPromotion(null);
+      return;
+    }
+
+    if (isOnline && gameId) {
+      handleOnlineMove(moveObj);
+    } else {
+      handleLocalMove(moveObj);
+    }
+
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setPendingPromotion(null);
+  }, [gameId, isOnline, pendingPromotion]);
 
   const handleBotOnlineMove = useCallback(async (moveMsg) => {
     if (!gameId || !db) return;
@@ -1610,6 +1645,9 @@ export default function App() {
     flipped,
     inCheck,
     moveAnimation,
+    pendingPromotion,
+    onChoosePromotion: handlePromotionChoice,
+    onCancelPromotion: () => setPendingPromotion(null),
     onFlipBoard: () => setFlipped(!flipped),
     onNewGame: resetPractice,
     onStopAi: () => {

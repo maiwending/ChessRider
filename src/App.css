@@ -797,6 +797,60 @@
   flex-shrink: 0;
 }
 
+.promotion-picker {
+  width: min(580px, 100%);
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background:
+    radial-gradient(circle at top left, rgba(90,144,32,0.12), transparent 40%),
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+  box-shadow: 0 16px 28px rgba(0,0,0,0.2);
+  text-align: center;
+}
+
+.promotion-picker__title {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
+.promotion-picker__options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.promotion-picker__option,
+.promotion-picker__cancel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-bright);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition-base), background var(--transition-base), transform var(--transition-base);
+}
+
+.promotion-picker__option {
+  min-height: 42px;
+  font-weight: 700;
+}
+
+.promotion-picker__option:hover,
+.promotion-picker__cancel:hover {
+  border-color: var(--accent);
+  background: var(--bg-panel-hover);
+  transform: translateY(-1px);
+}
+
+.promotion-picker__cancel {
+  margin-top: 10px;
+  padding: 8px 14px;
+}
+
 /* ─── AI Badge ─── */
 .ai-opponent-badge {
   display: flex;

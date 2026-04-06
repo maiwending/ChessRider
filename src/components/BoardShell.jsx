@@ -32,6 +32,9 @@ export default function BoardShell({
   flipped,
   inCheck,
   moveAnimation,
+  pendingPromotion,
+  onChoosePromotion,
+  onCancelPromotion,
   onFlipBoard,
   onNewGame,
   onStopAi,
@@ -113,6 +116,32 @@ export default function BoardShell({
         boardView={boardView}
         moveAnimation={moveAnimation}
       />
+
+      {pendingPromotion && (
+        <div className="promotion-picker" role="dialog" aria-label="Choose promotion piece">
+          <p className="promotion-picker__title">Promote pawn to</p>
+          <div className="promotion-picker__options">
+            {[
+              { key: 'q', label: 'Queen' },
+              { key: 'r', label: 'Rook' },
+              { key: 'b', label: 'Bishop' },
+              { key: 'n', label: 'Knight' },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className="promotion-picker__option"
+                onClick={() => onChoosePromotion(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="promotion-picker__cancel" onClick={onCancelPromotion}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       <PlayerBar position="bottom" formatClock={formatClock} {...bottomPlayer} />
 

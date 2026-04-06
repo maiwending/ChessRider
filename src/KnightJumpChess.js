@@ -263,7 +263,7 @@ class KnightJumpChess extends Chess {
           
           // Forward jump is a move only; must land on empty square
           if (!jumpTarget) {
-            moves.push(this.createJumpMove(fromSquare, jumpSquare, 'p', jumpTarget, nextSquare));
+            this.appendJumpMove(moves, fromSquare, jumpSquare, 'p', jumpTarget, nextSquare);
           }
         }
       }
@@ -290,7 +290,7 @@ class KnightJumpChess extends Chess {
             
             // Must capture an enemy piece on the landing square
             if (jumpTarget && jumpTarget.color !== color) {
-              moves.push(this.createJumpMove(fromSquare, jumpSquare, 'p', jumpTarget, captureSquare));
+              this.appendJumpMove(moves, fromSquare, jumpSquare, 'p', jumpTarget, captureSquare);
             }
           }
         }
@@ -339,10 +339,10 @@ class KnightJumpChess extends Chess {
           // Already jumped over one piece - now sliding normally
           if (!pieceAtSquare) {
             // Empty square - can move here and continue
-            moves.push(this.createJumpMove(fromSquare, currentSquare, this.get(fromSquare).type, null, blockedPiece));
+            this.appendJumpMove(moves, fromSquare, currentSquare, this.get(fromSquare).type, null, blockedPiece);
           } else if (pieceAtSquare.color !== color) {
             // Enemy piece - can capture and stop
-            moves.push(this.createJumpMove(fromSquare, currentSquare, this.get(fromSquare).type, pieceAtSquare, blockedPiece));
+            this.appendJumpMove(moves, fromSquare, currentSquare, this.get(fromSquare).type, pieceAtSquare, blockedPiece);
             break;
           } else {
             // Friendly piece - can't move here, stop
@@ -409,7 +409,7 @@ class KnightJumpChess extends Chess {
           const jumpTarget = this.get(jumpSquare);
 
           if (!jumpTarget || jumpTarget.color !== color) {
-            moves.push(this.createJumpMove(fromSquare, jumpSquare, 'k', jumpTarget, adjacentSquare));
+            this.appendJumpMove(moves, fromSquare, jumpSquare, 'k', jumpTarget, adjacentSquare);
           }
         }
       }
@@ -421,7 +421,7 @@ class KnightJumpChess extends Chess {
   /**
    * Create a jump move object
    */
-  createJumpMove(from, to, piece, captured, jumpedOver) {
+  createJumpMove(from, to, piece, captured, jumpedOver, promotion = null) {
     const move = {
       from,
       to,
@@ -429,7 +429,7 @@ class KnightJumpChess extends Chess {
       color: this.turn(),
       flags: 'j', // Custom flag for jump
       jumpedOver, // Track which piece was jumped over
-      san: this.createJumpSAN(from, to, piece, captured, jumpedOver)
+      san: this.createJumpSAN(from, to, piece, captured, jumpedOver, promotion)
     };
 
     if (captured) {
@@ -441,7 +441,7 @@ class KnightJumpChess extends Chess {
     if (piece === 'p') {
       const toRank = parseInt(to[1]);
       if ((this.turn() === 'w' && toRank === 8) || (this.turn() === 'b' && toRank === 1)) {
-        move.promotion = 'q'; // Default to queen
+        move.promotion = promotion || 'q';
         move.flags += 'p';
       }
     }
@@ -449,10 +449,24 @@ class KnightJumpChess extends Chess {
     return move;
   }
 
+  appendJumpMove(moves, from, to, piece, captured, jumpedOver) {
+    if (piece === 'p') {
+      const toRank = parseInt(to[1], 10);
+      if ((this.turn() === 'w' && toRank === 8) || (this.turn() === 'b' && toRank === 1)) {
+        ['q', 'r', 'b', 'n'].forEach((promotion) => {
+          moves.push(this.createJumpMove(from, to, piece, captured, jumpedOver, promotion));
+        });
+        return;
+      }
+    }
+
+    moves.push(this.createJumpMove(from, to, piece, captured, jumpedOver));
+  }
+
   /**
    * Create SAN notation for jump move
    */
-  createJumpSAN(from, to, piece, captured, jumpedOver) {
+  createJumpSAN(from, to, piece, captured, jumpedOver, promotion = null) {
     let san = '';
 
     // Piece letter (except for pawns)
@@ -475,6 +489,10 @@ class KnightJumpChess extends Chess {
 
     // Jump indicator (custom notation)
     san += '^' + jumpedOver;
+
+    if (promotion) {
+      san += `=${promotion.toUpperCase()}`;
+    }
 
     return san;
   }
@@ -521,7 +539,8 @@ class KnightJumpChess extends Chess {
       // Promotion only matters for pawns reaching the last rank, which is handled by createJumpMove
       matchingMove = jumpMoves.find(m => 
         m.from === move.from && 
-        m.to === move.to
+        m.to === move.to &&
+        (m.promotion || 'q') === (move.promotion || 'q')
       );
     }
 
@@ -547,7 +566,7 @@ class KnightJumpChess extends Chess {
     }
     
     // Place the piece at destination
-    this.put({ type: matchingMove.piece, color: matchingMove.color }, matchingMove.to);
+    this.put({ type: matchingMove.promotion || matchingMove.piece, color: matchingMove.color }, matchingMove.to);
 
     // Toggle turn
     this._turn = this._turn === 'w' ? 'b' : 'w';
