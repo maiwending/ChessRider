@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import wp from '../assets/chess/cburnett/Chess_plt45.svg';
 import wn from '../assets/chess/cburnett/Chess_nlt45.svg';
 import wb from '../assets/chess/cburnett/Chess_blt45.svg';
@@ -11,6 +11,7 @@ import bb from '../assets/chess/cburnett/Chess_bdt45.svg';
 import br from '../assets/chess/cburnett/Chess_rdt45.svg';
 import bq from '../assets/chess/cburnett/Chess_qdt45.svg';
 import bk from '../assets/chess/cburnett/Chess_kdt45.svg';
+import { useBoardHandAnimation } from '../utils/boardHandAnimation.js';
 import '../styles/ChessBoard.css';
 
 const pieceSprites = {
@@ -30,11 +31,13 @@ export default function ChessBoard({
   onSquareClick,
   theme,
   customThemeVars,
+  boardCornerRadius,
   pieceStyle,
   lastMove,
   flipped,
   inCheck,
   board3d,
+  boardView,
   moveAnimation,
 }) {
   const handleSquarePress = (event, square) => {
@@ -123,77 +126,12 @@ export default function ChessBoard({
 
   const moveFromCenter = getSquareCenter(moveAnimation?.from);
   const moveToCenter = getSquareCenter(moveAnimation?.to);
-  const selectedHandCenter = board3d && selectedSquare && !moveAnimation ? getSquareCenter(selectedSquare) : null;
-  const selectedPiece = board3d && selectedSquare && !moveAnimation ? game.get(selectedSquare) : null;
-  const [moveOverlayActive, setMoveOverlayActive] = useState(false);
-  const [moveProgress, setMoveProgress] = useState(0);
-  const [movePlaced, setMovePlaced] = useState(false);
-
-  useEffect(() => {
-    if (!(board3d && moveAnimation && moveFromCenter && moveToCenter)) {
-      setMoveOverlayActive(false);
-      setMoveProgress(0);
-      setMovePlaced(false);
-      return undefined;
-    }
-    setMoveOverlayActive(false);
-    setMoveProgress(0);
-    setMovePlaced(false);
-    let frame = 0;
-    let start = 0;
-    const travelDuration = 780;
-    const settleDuration = 0;
-    const tick = (timestamp) => {
-      if (!start) start = timestamp;
-      const elapsed = timestamp - start;
-      const progress = Math.min(elapsed / travelDuration, 1);
-      setMoveProgress(progress);
-      setMovePlaced(elapsed >= travelDuration + settleDuration);
-      if (elapsed < travelDuration + settleDuration) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-    frame = requestAnimationFrame((timestamp) => {
-      setMoveOverlayActive(true);
-      tick(timestamp);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [board3d, moveAnimation, moveFromCenter, moveToCenter]);
-
-  const currentMoveCenter = (() => {
-    if (!moveFromCenter || !moveToCenter) return null;
-    const startX = Number.parseFloat(moveFromCenter.x);
-    const startY = Number.parseFloat(moveFromCenter.y);
-    const endX = Number.parseFloat(moveToCenter.x);
-    const endY = Number.parseFloat(moveToCenter.y);
-    const eased = moveProgress < 0.5
-      ? 4 * moveProgress ** 3
-      : 1 - ((-2 * moveProgress + 2) ** 3) / 2;
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const distance = Math.hypot(dx, dy) || 1;
-    const sway = Math.sin(eased * Math.PI) * Math.min(distance * 0.01, 0.28);
-    const offsetX = (-dy / distance) * sway;
-    const offsetY = (dx / distance) * sway;
-    const lead = Math.sin(eased * Math.PI) * Math.min(distance * 0.018, 0.3);
-    const leadX = (dx / distance) * lead;
-    const leadY = (dy / distance) * lead;
-    const lift = 0;
-    const handTilt = -12 + eased * 14;
-    const pieceTilt = 0;
-    const pieceScale = 1;
-    return {
-      x: `${startX + dx * eased + offsetX + leadX}%`,
-      y: `${startY + dy * eased + offsetY + leadY}%`,
-      progress: eased,
-      lift,
-      handTilt,
-      pieceTilt,
-      pieceScale,
-      gripX: `${-5 + lead * 4}px`,
-      gripY: '0px',
-    };
-  })();
+  const { moveOverlayActive, movePlaced, currentMoveCenter } = useBoardHandAnimation({
+    enabled: board3d,
+    moveAnimation,
+    moveFromCenter,
+    moveToCenter,
+  });
 
   const renderPieceVisual = (piece, className, style) => {
     if (effectivePieceStyle === 'svg') {
@@ -216,8 +154,13 @@ export default function ChessBoard({
 
   return (
     <div
-      className={`chessboard-wrapper ${themeClass}${board3d ? ' board--3d' : ''}`}
-      style={theme?.startsWith('custom:') ? customThemeVars : undefined}
+      className={`chessboard-wrapper ${themeClass}${board3d ? ' board--3d' : ''}${boardView === 'realistic' ? ' board--realistic' : ''}`}
+      style={{
+        ...(theme?.startsWith('custom:') ? customThemeVars : {}),
+        '--board-corner-radius': `${boardCornerRadius}px`,
+        '--board-corner-radius-large': `${Math.max(boardCornerRadius + 2, boardCornerRadius)}px`,
+        '--board-corner-radius-base': `${Math.max(boardCornerRadius * 2.2, 12)}px`,
+      }}
     >
       {game ? (
         <div className="board-surface">
@@ -291,15 +234,6 @@ export default function ChessBoard({
               })
             )}
           </div>
-          {board3d && selectedHandCenter && selectedPiece && (
-            <div
-              className="board-hand-overlay board-hand-overlay--selected"
-              style={{ '--hand-x': selectedHandCenter.x, '--hand-y': selectedHandCenter.y }}
-            >
-              <div className="board-hand board-hand--idle" />
-              {renderPieceVisual(selectedPiece, 'board-hand-piece board-hand-piece--idle')}
-            </div>
-          )}
           {board3d && moveAnimation && moveFromCenter && moveToCenter && (
             <div
               key={moveAnimation.key}
@@ -318,8 +252,7 @@ export default function ChessBoard({
               }}
             >
               <div className="board-hand-carry">
-                <div className="board-hand board-hand--move" />
-                {renderPieceVisual(moveAnimation.movingPiece, 'board-hand-piece board-hand-piece--move')}
+                {renderPieceVisual(moveAnimation.movingPiece, 'board-move-piece board-move-piece--move')}
                 {moveAnimation.capturedPiece && (
                   renderPieceVisual(
                     moveAnimation.capturedPiece,

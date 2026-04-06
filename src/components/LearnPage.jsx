@@ -144,7 +144,7 @@ const interactiveLessons = [
       },
       {
         title: 'The pawn jumps the blocker',
-        note: 'A pawn in the aura can leap one blocker straight ahead.',
+        note: 'A pawn in the aura can leap one blocker straight ahead only to an empty square. It still cannot capture by jumping straight forward.',
         board: [
           ['','','','♙','',''],
           ['','','','♟','',''],
@@ -401,7 +401,8 @@ export default function LearnPage({ onBack, onOpenTutorials, tutorialsOnly = fal
               <p className="learn-section-subtitle">Pawns and kings can ride the aura too</p>
               <p>
                 The horse&apos;s power reaches everyone. <strong>Pawns</strong> near a knight can
-                jump one square forward over a blocker. <strong>Kings</strong> can also jump one safe
+                jump one square forward over a blocker to an empty square, but they still
+                cannot capture by jumping straight ahead. <strong>Kings</strong> can also jump one safe
                 square when empowered, which creates unusual defensive and attacking ideas.
               </p>
               <div className="learn-jump-demo">
@@ -429,7 +430,7 @@ export default function LearnPage({ onBack, onOpenTutorials, tutorialsOnly = fal
               <div className="learn-summary-card">
                 <span className="learn-summary-icon">⤴</span>
                 <strong>The Jump</strong>
-                <p>Leap over exactly one blocker, then keep sliding or capture</p>
+                <p>Leap over exactly one blocker; pawns still capture diagonally, not straight ahead</p>
               </div>
               <div className="learn-summary-card">
                 <span className="learn-summary-icon">🛑</span>
