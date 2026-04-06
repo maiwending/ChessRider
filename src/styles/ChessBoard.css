@@ -395,6 +395,25 @@
   z-index: 8;
 }
 
+.board-hand-carry {
+  position: absolute;
+  left: var(--hand-x);
+  top: var(--hand-y);
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition:
+    left 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
+    top 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
+    opacity 0.12s ease-out;
+}
+
+.board-hand-overlay--active .board-hand-carry {
+  left: var(--move-x);
+  top: var(--move-y);
+  opacity: 1;
+}
+
 .board-hand {
   position: absolute;
   left: var(--hand-x);
@@ -439,40 +458,24 @@
 }
 
 .board-hand--move {
-  left: var(--hand-start-x);
-  top: var(--hand-start-y);
-  opacity: 0;
+  left: 0;
+  top: 0;
   transform: rotate(-8deg) scale(1);
-  transition:
-    left 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    top 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    opacity 0.12s ease-out,
-    transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
+  transition: transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
 }
 
 .board-hand-piece--move {
-  left: var(--hand-start-x);
-  top: var(--hand-start-y);
-  opacity: 0;
+  left: 0;
+  top: 0;
   transform: scale(1.05);
-  transition:
-    left 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    top 0.82s cubic-bezier(0.24, 0.86, 0.32, 1),
-    opacity 0.12s ease-out,
-    transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
+  transition: transform 0.82s cubic-bezier(0.24, 0.86, 0.32, 1);
 }
 
 .board-hand-overlay--active .board-hand--move {
-  left: var(--hand-end-x);
-  top: var(--hand-end-y);
-  opacity: 1;
   transform: translateY(-8px) rotate(2deg) scale(1);
 }
 
 .board-hand-overlay--active .board-hand-piece--move {
-  left: var(--hand-end-x);
-  top: var(--hand-end-y);
-  opacity: 1;
   transform: translateY(-10px) scale(1.05);
 }
 

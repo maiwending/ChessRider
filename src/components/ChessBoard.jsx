@@ -242,16 +242,18 @@ export default function ChessBoard({
               key={moveAnimation.key}
               className={`board-hand-overlay board-hand-overlay--move board-hand-overlay--${moveAnimation.actor}${moveOverlayActive ? ' board-hand-overlay--active' : ''}`}
               style={{
-                '--hand-start-x': moveFromCenter.x,
-                '--hand-start-y': moveFromCenter.y,
-                '--hand-end-x': moveToCenter.x,
-                '--hand-end-y': moveToCenter.y,
+                '--hand-x': moveFromCenter.x,
+                '--hand-y': moveFromCenter.y,
+                '--move-x': moveToCenter.x,
+                '--move-y': moveToCenter.y,
                 '--drop-x': '38px',
                 '--drop-y': '18px',
               }}
             >
-              <div className="board-hand board-hand--move" />
-              {renderPieceVisual(moveAnimation.movingPiece, 'board-hand-piece board-hand-piece--move')}
+              <div className="board-hand-carry">
+                <div className="board-hand board-hand--move" />
+                {renderPieceVisual(moveAnimation.movingPiece, 'board-hand-piece board-hand-piece--move')}
+              </div>
               {moveAnimation.capturedPiece && (
                 renderPieceVisual(
                   moveAnimation.capturedPiece,
