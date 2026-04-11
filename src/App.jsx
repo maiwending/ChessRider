@@ -1836,6 +1836,7 @@ export default function App() {
 
   const homePageProps = {
     user,
+    authReady,
     profile,
     rating,
     firebaseEnabled,

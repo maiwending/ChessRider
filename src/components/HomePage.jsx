@@ -236,7 +236,7 @@ function SignedInHomePanel({
   );
 }
 
-function SignedOutHomePanel({ firebaseEnabled, onPlayGuest, onSignIn, onHowItWorks }) {
+function SignedOutHomePanel({ firebaseEnabled, onPlayGuest, onSignIn, onHowItWorks, primaryActionLabel = 'Play as Guest' }) {
   return (
     <>
       <section className="home-hero">
@@ -247,7 +247,7 @@ function SignedOutHomePanel({ firebaseEnabled, onPlayGuest, onSignIn, onHowItWor
           </p>
           <div className="home-actions">
             <button className="btn btn-primary home-cta" onClick={onPlayGuest}>
-              Play as Guest
+              {primaryActionLabel}
             </button>
             <button className="btn btn-ghost home-cta" onClick={onSignIn}>
               Sign In
@@ -284,6 +284,7 @@ function SignedOutHomePanel({ firebaseEnabled, onPlayGuest, onSignIn, onHowItWor
 
 export default function HomePage({
   user,
+  authReady = true,
   profile,
   rating,
   firebaseEnabled,
@@ -316,6 +317,7 @@ export default function HomePage({
           onPlayGuest={onPlayGuest}
           onSignIn={onSignIn}
           onHowItWorks={onHowItWorks}
+          primaryActionLabel={authReady ? 'Play as Guest' : 'Play'}
         />
       )}
     </main>
