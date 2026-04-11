@@ -24,6 +24,12 @@ function buildAuraGrid() {
 
 const auraGrid = buildAuraGrid();
 
+function getCellAriaLabel(cell, rowIndex, cellIndex) {
+  if (cell === '○') return `target square ${rowIndex + 1}-${cellIndex + 1}`;
+  if (cell === '→') return `path square ${rowIndex + 1}-${cellIndex + 1}`;
+  return `board square ${rowIndex + 1}-${cellIndex + 1}`;
+}
+
 const interactiveLessons = [
   {
     title: 'Aura Builder',
@@ -86,6 +92,11 @@ const interactiveLessons = [
       {
         title: 'Aura lets it jump once',
         note: 'The rook clears exactly one blocker and keeps moving.',
+        challenge: {
+          prompt: 'Click the landing square behind the blocker.',
+          target: [0, 4],
+          success: 'Correct. That is the first legal square beyond the blocker.',
+        },
         board: [
           ['♖','→','♟','→','○','♝'],
         ],
@@ -145,6 +156,11 @@ const interactiveLessons = [
       {
         title: 'The pawn jumps the blocker',
         note: 'A pawn in the aura can leap one blocker straight ahead only to an empty square. It still cannot capture by jumping straight forward.',
+        challenge: {
+          prompt: 'Click the empty square the pawn may jump to.',
+          target: [0, 3],
+          success: 'Correct. The pawn jumps forward only if the landing square is empty.',
+        },
         board: [
           ['','','','♙','',''],
           ['','','','♟','',''],
@@ -164,22 +180,225 @@ const interactiveLessons = [
       },
     ],
   },
+  {
+    title: 'King Escape',
+    tag: 'Defense',
+    goal: 'Use an empowered king to slip over a blocker when one safe square opens.',
+    steps: [
+      {
+        title: 'Crowded shelter',
+        note: 'The king looks boxed in by its own piece.',
+        board: [
+          ['','','','',''],
+          ['','♜','','',''],
+          ['','♙','♔','',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+      {
+        title: 'Aura opens a jump',
+        note: 'The king may clear one blocker if the landing square is still safe.',
+        challenge: {
+          prompt: 'Click the safe landing square for the king.',
+          target: [1, 2],
+          success: 'Correct. The king may jump only if the destination stays legal.',
+        },
+        board: [
+          ['','','','',''],
+          ['','♜','○','',''],
+          ['','♙','♔','→',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+      {
+        title: 'Safety still matters',
+        note: 'Aura never lets the king jump into check, so the landing square must remain legal.',
+        board: [
+          ['','','','',''],
+          ['','♜','♔','',''],
+          ['','♙','','',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Bishop Strike',
+    tag: 'Attack',
+    goal: 'Use a diagonal jump to attack through a blocked long line.',
+    steps: [
+      {
+        title: 'Diagonal is clogged',
+        note: 'The bishop cannot reach the target while the pawn blocks the lane.',
+        board: [
+          ['♝','','','','',''],
+          ['','♟','','','',''],
+          ['','','','','',''],
+          ['','','','','',''],
+          ['','','','','♜',''],
+          ['','','','','',''],
+        ],
+      },
+      {
+        title: 'Aura keeps the diagonal alive',
+        note: 'One blocker may be cleared and the bishop can continue sliding.',
+        challenge: {
+          prompt: 'Click the first legal landing square beyond the blocker.',
+          target: [3, 3],
+          success: 'Correct. The bishop clears one blocker and resumes its diagonal.',
+        },
+        board: [
+          ['♝','','','','',''],
+          ['','♟','','','',''],
+          ['','','→','','',''],
+          ['','','','○','',''],
+          ['','','','','♜',''],
+          ['','','','','',''],
+        ],
+      },
+      {
+        title: 'Capture lands deep',
+        note: 'Long-range pieces become much sharper once the first blocker is ignored.',
+        board: [
+          ['','','','','',''],
+          ['','♟','','','',''],
+          ['','','','','',''],
+          ['','','','','',''],
+          ['','','','','♝',''],
+          ['','','','','',''],
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Fork Setup',
+    tag: 'Tactics',
+    goal: 'Use aura movement to create a fork that would not exist in normal chess.',
+    steps: [
+      {
+        title: 'Knight support behind the rook',
+        note: 'The rook is ready to jump the blocker and invade.',
+        board: [
+          ['♜','','','','♛',''],
+          ['♟','','','','',''],
+          ['♖','','','','♚',''],
+          ['♞','','','','',''],
+        ],
+      },
+      {
+        title: 'The rook clears the file',
+        note: 'One jump puts the rook onto a square with multiple threats.',
+        challenge: {
+          prompt: 'Click the invasion square that creates the fork.',
+          target: [2, 2],
+          success: 'Correct. That jump creates pressure on both targets.',
+        },
+        board: [
+          ['♜','','','','♛',''],
+          ['♟','','','','',''],
+          ['♖','→','○','','♚',''],
+          ['♞','','','','',''],
+        ],
+      },
+      {
+        title: 'Forked targets',
+        note: 'The leap creates pressure on both the queen and king-side squares at once.',
+        board: [
+          ['♜','','','','♛',''],
+          ['♟','','','','',''],
+          ['','','♖','','♚',''],
+          ['♞','','','','',''],
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Promotion Jump',
+    tag: 'Endgame',
+    goal: 'See how aura promotion keeps all four promotion choices open.',
+    steps: [
+      {
+        title: 'The pawn is blocked',
+        note: 'Normally this pawn would stall one rank before promotion.',
+        board: [
+          ['','','♟','',''],
+          ['','','♙','',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+      {
+        title: 'Aura clears the last blocker',
+        note: 'The pawn may jump forward to an empty promotion square.',
+        challenge: {
+          prompt: 'Click the promotion square the pawn can jump to.',
+          target: [0, 2],
+          success: 'Correct. The pawn can jump into promotion when the landing square is empty.',
+        },
+        board: [
+          ['','','○','',''],
+          ['','','♙','',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+      {
+        title: 'Choose the piece',
+        note: 'The jump does not force a queen. Rook, bishop, queen, and knight remain legal promotions.',
+        board: [
+          ['','','♕','',''],
+          ['','','','',''],
+          ['','♞','','',''],
+          ['','','','',''],
+        ],
+      },
+    ],
+  },
 ];
 
 function InteractiveTutorials() {
   const [activeLesson, setActiveLesson] = useState(0);
   const [activeStep, setActiveStep] = useState(0);
+  const [stepSolved, setStepSolved] = useState(false);
+  const [stepFeedback, setStepFeedback] = useState('');
 
   const lesson = interactiveLessons[activeLesson];
   const step = lesson.steps[activeStep];
 
   const canGoPrev = activeStep > 0;
-  const canGoNext = activeStep < lesson.steps.length - 1;
+  const canGoNext = activeStep < lesson.steps.length - 1 && (!step.challenge || stepSolved);
 
   const progressLabel = useMemo(
     () => `${activeStep + 1} / ${lesson.steps.length}`,
     [activeStep, lesson.steps.length]
   );
+
+  const resetStepState = (nextStep = 0) => {
+    setActiveStep(nextStep);
+    setStepSolved(false);
+    setStepFeedback('');
+  };
+
+  const handleLessonChange = (index) => {
+    setActiveLesson(index);
+    setStepSolved(false);
+    setStepFeedback('');
+    setActiveStep(0);
+  };
+
+  const handleBoardClick = (rowIndex, cellIndex) => {
+    if (!step.challenge) return;
+    const [targetRow, targetCell] = step.challenge.target;
+    if (rowIndex === targetRow && cellIndex === targetCell) {
+      setStepSolved(true);
+      setStepFeedback(step.challenge.success);
+      return;
+    }
+    setStepFeedback('Not that square. Follow the move rule and try again.');
+  };
 
   return (
     <section className="learn-tutorials learn-tutorials--interactive">
@@ -193,10 +412,7 @@ function InteractiveTutorials() {
           <button
             key={item.title}
             className={`learn-lesson-tab${index === activeLesson ? ' active' : ''}`}
-            onClick={() => {
-              setActiveLesson(index);
-              setActiveStep(0);
-            }}
+            onClick={() => handleLessonChange(index)}
           >
             <span className="learn-lesson-tab-tag">{item.tag}</span>
             <span>{item.title}</span>
@@ -215,13 +431,23 @@ function InteractiveTutorials() {
           <div className="learn-step-card">
             <strong>{step.title}</strong>
             <p>{step.note}</p>
+            {step.challenge && (
+              <div className="learn-step-challenge">
+                <span>{step.challenge.prompt}</span>
+                {stepFeedback && (
+                  <strong className={stepSolved ? 'learn-step-challenge--success' : 'learn-step-challenge--error'}>
+                    {stepFeedback}
+                  </strong>
+                )}
+              </div>
+            )}
           </div>
           <div className="learn-interactive-actions">
-            <button className="btn btn-ghost" onClick={() => setActiveStep(0)}>Reset</button>
-            <button className="btn btn-ghost" onClick={() => canGoPrev && setActiveStep((value) => value - 1)} disabled={!canGoPrev}>
+            <button className="btn btn-ghost" onClick={() => resetStepState(0)}>Reset</button>
+            <button className="btn btn-ghost" onClick={() => canGoPrev && resetStepState(activeStep - 1)} disabled={!canGoPrev}>
               Previous
             </button>
-            <button className="btn btn-primary" onClick={() => canGoNext && setActiveStep((value) => value + 1)} disabled={!canGoNext}>
+            <button className="btn btn-primary" onClick={() => canGoNext && resetStepState(activeStep + 1)} disabled={!canGoNext}>
               Next
             </button>
           </div>
@@ -232,13 +458,18 @@ function InteractiveTutorials() {
             <div key={rowIndex} className="learn-demo-row">
               {row.map((cell, cellIndex) => {
                 const dark = (rowIndex + cellIndex) % 2 === 1;
+                const isChallengeTarget = step.challenge?.target?.[0] === rowIndex && step.challenge?.target?.[1] === cellIndex;
                 return (
-                  <div
+                  <button
                     key={`${rowIndex}-${cellIndex}`}
-                    className={`learn-demo-cell${dark ? ' learn-demo-cell--dark' : ' learn-demo-cell--light'}${cell === '○' ? ' learn-demo-cell--target' : ''}${cell === '→' ? ' learn-demo-cell--path' : ''}`}
+                    type="button"
+                    aria-label={getCellAriaLabel(cell, rowIndex, cellIndex)}
+                    className={`learn-demo-cell${dark ? ' learn-demo-cell--dark' : ' learn-demo-cell--light'}${cell === '○' ? ' learn-demo-cell--target' : ''}${cell === '→' ? ' learn-demo-cell--path' : ''}${step.challenge ? ' learn-demo-cell--clickable' : ''}${isChallengeTarget ? ' learn-demo-cell--challenge' : ''}${stepSolved && isChallengeTarget ? ' learn-demo-cell--challenge-solved' : ''}`}
+                    onClick={() => handleBoardClick(rowIndex, cellIndex)}
+                    disabled={!step.challenge}
                   >
                     {cell === '○' ? '' : cell}
-                  </div>
+                  </button>
                 );
               })}
             </div>

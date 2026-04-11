@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const PROJECT_ID = 'knightaura-rules-test';
 const rules = readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8');
@@ -26,6 +26,17 @@ async function seedGame(overrides = {}) {
   });
 }
 
+async function seedDm(overrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'dms', 'dm-1'), {
+      participants: ['white-player', 'black-player'],
+      updatedAt: new Date().toISOString(),
+      ...overrides,
+    });
+  });
+}
+
 before(async () => {
   testEnv = await initializeTestEnvironment({
     projectId: PROJECT_ID,
@@ -38,6 +49,7 @@ before(async () => {
 beforeEach(async () => {
   await testEnv.clearFirestore();
   await seedGame();
+  await seedDm();
 });
 
 after(async () => {
@@ -110,6 +122,66 @@ test('participants can write ICE candidates inside voice sessions', async () => 
         sdpMLineIndex: 0,
       }
     )
+  );
+});
+
+test('dm participants can read the dm root document', async () => {
+  const whiteDb = testEnv.authenticatedContext('white-player').firestore();
+
+  await assertSucceeds(getDoc(doc(whiteDb, 'dms', 'dm-1')));
+});
+
+test('non-participants cannot read the dm root document', async () => {
+  const outsiderDb = testEnv.authenticatedContext('outsider').firestore();
+
+  await assertFails(getDoc(doc(outsiderDb, 'dms', 'dm-1')));
+});
+
+test('dm participants can update dm metadata without changing participants', async () => {
+  const whiteDb = testEnv.authenticatedContext('white-player').firestore();
+
+  await assertSucceeds(
+    setDoc(doc(whiteDb, 'dms', 'dm-1'), {
+      participants: ['white-player', 'black-player'],
+      updatedAt: new Date().toISOString(),
+      lastMessageAt: new Date().toISOString(),
+    }, { merge: true })
+  );
+});
+
+test('dm participants cannot rewrite the participants list', async () => {
+  const whiteDb = testEnv.authenticatedContext('white-player').firestore();
+
+  await assertFails(
+    setDoc(doc(whiteDb, 'dms', 'dm-1'), {
+      participants: ['white-player', 'outsider'],
+    }, { merge: true })
+  );
+});
+
+test('dm participants can create dm messages', async () => {
+  const whiteDb = testEnv.authenticatedContext('white-player').firestore();
+
+  await assertSucceeds(
+    setDoc(doc(whiteDb, 'dms', 'dm-1', 'messages', 'msg-1'), {
+      text: 'hello',
+      senderId: 'white-player',
+      senderName: 'White',
+      createdAt: new Date().toISOString(),
+    })
+  );
+});
+
+test('non-participants cannot create dm messages', async () => {
+  const outsiderDb = testEnv.authenticatedContext('outsider').firestore();
+
+  await assertFails(
+    setDoc(doc(outsiderDb, 'dms', 'dm-1', 'messages', 'msg-1'), {
+      text: 'hello',
+      senderId: 'outsider',
+      senderName: 'Outsider',
+      createdAt: new Date().toISOString(),
+    })
   );
 });
 

@@ -1,5 +1,9 @@
-const DEFAULT_TEXT_AI_MODEL = 'deepseek/deepseek-r1-0528-qwen3-8b';
-const DEFAULT_TEXT_AI_BASE_URL = 'http://10.0.0.133:1234/v1/chat/completions';
+const DEFAULT_TEXT_AI_MODEL = (import.meta.env.VITE_TEXT_AI_MODEL || 'deepseek/deepseek-r1-0528-qwen3-8b').trim();
+const DEFAULT_TEXT_AI_BASE_URL = (
+  import.meta.env.VITE_TEXT_AI_BASE_URL ||
+  import.meta.env.VITE_TEXT_AI_PROXY_URL ||
+  '/api/text-ai'
+).trim();
 const DEFAULT_TEXT_AI_SYSTEM_PROMPT =
   'You are an AI assistant. Always reply in the language the user uses. do not use enojis';
 

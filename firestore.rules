@@ -73,6 +73,19 @@ service cloud.firestore {
         usernameKey == data.displayName.lower();
     }
 
+    function isValidDmParticipants(data) {
+      return data.participants is list &&
+        data.participants.size() == 2 &&
+        data.participants[0] is string &&
+        data.participants[1] is string;
+    }
+
+    function isDmParticipant(data) {
+      return isSignedIn() &&
+        isValidDmParticipants(data) &&
+        data.participants.hasAny([request.auth.uid]);
+    }
+
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (
@@ -136,11 +149,16 @@ service cloud.firestore {
     }
 
     match /dms/{chatId} {
-      allow read, write: if isSignedIn();
+      allow read: if isDmParticipant(resource.data);
+      allow create: if isDmParticipant(request.resource.data);
+      allow update: if isDmParticipant(resource.data) &&
+        request.resource.data.participants == resource.data.participants;
+      allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow read: if isDmParticipant(get(/databases/$(database)/documents/dms/$(chatId)).data);
+        allow create: if isDmParticipant(get(/databases/$(database)/documents/dms/$(chatId)).data) &&
+          request.resource.data.senderId == request.auth.uid;
       }
     }
 
