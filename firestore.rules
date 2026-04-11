@@ -105,7 +105,7 @@ service cloud.firestore {
     match /games/{gameId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.whiteId == request.auth.uid;
-      allow update, delete: if isSignedIn();
+      allow update, delete: if isGameParticipant(gameId);
 
       match /messages/{messageId} {
         allow read: if isSignedIn();

@@ -1,8 +1,21 @@
 import React, { Suspense, lazy } from 'react';
 import ChessBoard from './ChessBoard.jsx';
 import PlayerBar from './PlayerBar.jsx';
+import wn from '../assets/chess/cburnett/Chess_nlt45.svg';
+import wb from '../assets/chess/cburnett/Chess_blt45.svg';
+import wr from '../assets/chess/cburnett/Chess_rlt45.svg';
+import wq from '../assets/chess/cburnett/Chess_qlt45.svg';
+import bn from '../assets/chess/cburnett/Chess_ndt45.svg';
+import bb from '../assets/chess/cburnett/Chess_bdt45.svg';
+import br from '../assets/chess/cburnett/Chess_rdt45.svg';
+import bq from '../assets/chess/cburnett/Chess_qdt45.svg';
 
 const GameChat = lazy(() => import('./GameChat.jsx'));
+
+const promotionSprites = {
+  w: { q: wq, r: wr, b: wb, n: wn },
+  b: { q: bq, r: br, b: bb, n: bn },
+};
 
 export default function BoardShell({
   boardView,
@@ -133,7 +146,13 @@ export default function BoardShell({
                 className="promotion-picker__option"
                 onClick={() => onChoosePromotion(option.key)}
               >
-                {option.label}
+                <img
+                  className="promotion-picker__icon"
+                  src={promotionSprites[pendingPromotion.color || 'w'][option.key]}
+                  alt=""
+                  draggable="false"
+                />
+                <span className="promotion-picker__label">{option.label}</span>
               </button>
             ))}
           </div>

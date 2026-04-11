@@ -787,6 +787,7 @@ export default function App() {
         setPendingPromotion({
           from: selectedSquare,
           to: square,
+          color: promotionMoves[0].color,
           moves: promotionMoves,
         });
         return;

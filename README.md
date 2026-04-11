@@ -43,15 +43,18 @@ KNightAuraChess features a completely custom game engine that natively supports 
 ## 📦 Installation & Local Development
 
 ### Prerequisites
-*   Node.js v18+ 
+*   Node.js v20.19+ 
 *   A Firebase Project (Firestore + Authentication)
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/maiwending/ChessRider.git
-cd ChessRider
+git clone https://github.com/bobwdmai/KnightAuraChess.git
+cd KnightAuraChess
+
+# Use the repo's Node version
+nvm use
 
 # Install dependencies
 npm install
@@ -74,33 +77,17 @@ VITE_FIREBASE_APP_ID="your_app_id"
 ```bash
 npm run dev
 ```
-Open `http://localhost:5174` in your browser.
+Open the local URL shown by Vite in your browser.
 
 ## 🔐 Firebase Security Rules
 
-To ensure proper multiplayer security and Elo ranking point allocations, you must paste the following into your **Firebase Console -> Firestore Database -> Rules** tab:
+Firestore rules are part of the app. After changing [firestore.rules](./firestore.rules), deploy them:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    match /users/{uid} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /games/{gameId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.whiteId == request.auth.uid;
-      allow update, delete: if isSignedIn();
-    }
-  }
-}
+```bash
+firebase deploy --only firestore:rules
 ```
+
+This is required for online features such as game chat and peer voice signaling.
 
 ## 🚀 Deployment (Cloudflare Pages)
 

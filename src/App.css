@@ -699,6 +699,34 @@
   display: inline-block;
 }
 
+[data-theme="light"] .board-section--realistic .player-bar__clock {
+  background:
+    radial-gradient(circle at 22% 30%, rgba(255,255,255,0.8), transparent 28%),
+    linear-gradient(180deg, rgba(252, 248, 239, 0.98), rgba(221, 207, 181, 0.96));
+  border: 1px solid rgba(126, 91, 39, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.92),
+    inset 0 -1px 0 rgba(102, 75, 41, 0.14),
+    0 8px 14px rgba(109, 86, 52, 0.18);
+  color: #5b4226;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.66);
+}
+
+[data-theme="light"] .board-section--realistic .player-bar__clock::before {
+  background:
+    radial-gradient(circle at center, rgba(255,255,255,0.95) 0 1px, transparent 1px),
+    linear-gradient(135deg, rgba(255,255,255,0.72), rgba(170, 132, 73, 0.16)),
+    #f0d8a4;
+  box-shadow:
+    inset 0 0 0 1px rgba(126, 91, 39, 0.28),
+    0 1px 2px rgba(112, 86, 45, 0.16);
+}
+
+[data-theme="light"] .board-section--realistic .player-bar__clock::after {
+  background: rgba(110, 79, 40, 0.86);
+  box-shadow: -4px -3px 0 rgba(110, 79, 40, 0.86);
+}
+
 .board-section:not(.board-section--3d) .player-bar {
   box-shadow: 0 10px 18px rgba(0,0,0,0.12);
 }
@@ -835,8 +863,26 @@
 }
 
 .promotion-picker__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 42px;
+  padding: 10px 8px;
   font-weight: 700;
+}
+
+.promotion-picker__icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.22));
+}
+
+.promotion-picker__label {
+  font-size: 0.78rem;
+  line-height: 1;
 }
 
 .promotion-picker__option:hover,
@@ -2090,9 +2136,12 @@ textarea.select {
 }
 
 .game-chat__speech-status {
-  padding: 0 12px 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(192, 48, 48, 0.22);
+  background: rgba(192, 48, 48, 0.08);
   font-size: 0.76rem;
-  color: var(--text-dim);
+  color: #ffc3c3;
 }
 
 /* ─── Move History ─── */

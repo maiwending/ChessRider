@@ -22,6 +22,31 @@ const rtcConfig = {
   ],
 };
 
+const VOICE_CONNECT_TIMEOUT_MS = 15000;
+
+function formatVoiceError(error) {
+  const code = error?.code || '';
+  const name = error?.name || '';
+  const message = error?.message || '';
+
+  if (code === 'permission-denied' || /permission/i.test(message)) {
+    return 'Voice signaling is blocked. Deploy the latest Firestore rules and rejoin the match.';
+  }
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Microphone access was denied. Allow mic access in your browser and try again.';
+  }
+  if (name === 'NotFoundError') {
+    return 'No microphone was found on this device.';
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'Your microphone is busy in another app. Close it there and retry.';
+  }
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    return 'Voice chat needs a secure HTTPS page.';
+  }
+  return message || 'Voice chat could not start. Try leaving and joining again.';
+}
+
 export default function GameChat({
   gameId,
   currentUser,
@@ -42,9 +67,32 @@ export default function GameChat({
   const peerRef = useRef(null);
   const currentSessionIdRef = useRef(null);
   const isCallerRef = useRef(false);
+  const voiceEnabledRef = useRef(false);
   const sessionUnsubsRef = useRef([]);
   const activeCurrentVoiceUnsubRef = useRef(null);
   const addedCandidateIdsRef = useRef(new Set());
+  const voiceConnectTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    voiceEnabledRef.current = voiceEnabled;
+  }, [voiceEnabled]);
+
+  const clearVoiceConnectTimeout = () => {
+    if (voiceConnectTimeoutRef.current) {
+      clearTimeout(voiceConnectTimeoutRef.current);
+      voiceConnectTimeoutRef.current = null;
+    }
+  };
+
+  const armVoiceConnectTimeout = () => {
+    clearVoiceConnectTimeout();
+    voiceConnectTimeoutRef.current = setTimeout(() => {
+      if (!voiceConnected && voiceEnabledRef.current) {
+        setVoiceError('Voice did not connect. Make sure both players joined and that microphone access is allowed.');
+        setVoiceStatus('Voice connection timed out');
+      }
+    }, VOICE_CONNECT_TIMEOUT_MS);
+  };
 
   useEffect(() => {
     const q = query(
@@ -83,6 +131,7 @@ export default function GameChat({
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
+    clearVoiceConnectTimeout();
     setVoiceConnected(false);
   };
 
@@ -147,13 +196,21 @@ export default function GameChat({
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
+        clearVoiceConnectTimeout();
         setVoiceConnected(true);
         setVoiceStatus('Voice connected');
       } else if (state === 'connecting') {
+        armVoiceConnectTimeout();
         setVoiceStatus('Connecting voice...');
       } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        clearVoiceConnectTimeout();
         setVoiceConnected(false);
-        if (voiceEnabled) setVoiceStatus('Voice disconnected');
+        if (voiceEnabledRef.current) {
+          setVoiceStatus('Voice disconnected');
+          if (state === 'failed') {
+            setVoiceError('Peer connection failed. Rejoin voice and check that both players are on a stable network.');
+          }
+        }
       }
     };
   };
@@ -222,6 +279,7 @@ export default function GameChat({
       subscribeToCandidates(calleeCandidatesRef, pc)
     );
 
+    armVoiceConnectTimeout();
     setVoiceStatus('Waiting for opponent to join voice...');
   };
 
@@ -273,11 +331,17 @@ export default function GameChat({
       subscribeToCandidates(callerCandidatesRef, pc)
     );
 
+    armVoiceConnectTimeout();
     setVoiceStatus('Connecting voice...');
   };
 
   useEffect(() => {
     if (!liveVoiceChat || !voiceEnabled || !gameId || !currentUser) return undefined;
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      setVoiceError('Voice chat needs HTTPS. Open the secure site and try again.');
+      setVoiceStatus('Voice unavailable');
+      return undefined;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       setVoiceError('Voice streaming is not supported in this browser.');
       return undefined;
@@ -308,7 +372,7 @@ export default function GameChat({
         await joinCallerSession(data.sessionId, data.callerUid);
       } catch (error) {
         console.error('Voice session error:', error);
-        setVoiceError(error?.message || 'Failed to start voice chat.');
+        setVoiceError(formatVoiceError(error));
         setVoiceStatus('Voice unavailable');
       }
     });
@@ -356,6 +420,7 @@ export default function GameChat({
       return;
     }
     setVoiceError('');
+    setVoiceConnected(false);
     setVoiceStatus('Starting voice...');
     setVoiceEnabled(true);
   };
