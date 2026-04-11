@@ -89,6 +89,53 @@ firebase deploy --only firestore:rules
 
 This is required for online features such as game chat and peer voice signaling.
 
+## 🧭 Authoritative Move API (Rollout)
+
+The client now supports an optional server-first move pipeline.
+
+Enable it with:
+
+```env
+VITE_MOVE_API_ENABLED="true"
+VITE_MOVE_API_STRICT="true"
+VITE_MOVE_API_URL="/api/move"
+```
+
+Backend env required by `functions/api/move.js`:
+
+```env
+FIREBASE_PROJECT_ID="your-project-id"
+FIREBASE_WEB_API_KEY="your-web-api-key"
+FIREBASE_SERVICE_ACCOUNT_EMAIL="service-account@your-project.iam.gserviceaccount.com"
+FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Client contract (`POST /api/move`):
+
+```json
+{
+  "gameId": "abc123",
+  "from": "e2",
+  "to": "e4",
+  "promotion": null,
+  "expectedMoveSeq": 12
+}
+```
+
+Expected success response:
+
+```json
+{
+  "ok": true,
+  "gameId": "abc123",
+  "moveSeq": 13,
+  "status": "active"
+}
+```
+
+`functions/api/move.js` now implements server-side move execution (auth check, legality check, sequence check, clocks/result update, and rating updates on game end).  
+If `VITE_MOVE_API_STRICT="true"`, the client no longer falls back to direct Firestore move writes.
+
 ## 🚀 Deployment (Cloudflare Pages)
 
 This project is configured for seamless deployment via Cloudflare Pages:

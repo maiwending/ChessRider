@@ -29,6 +29,7 @@ import {
   BOARD_HAND_TOTAL_MS,
 } from './utils/boardHandAnimation.js';
 import { db, firebaseEnabled } from './utils/firebase.js';
+import { moveApiEnabled, moveApiStrict, submitAuthoritativeMove } from './utils/moveApi.js';
 import './App.css';
 const UserProfileModal = React.lazy(() => import('./components/UserProfileModal.jsx'));
 
@@ -1043,7 +1044,36 @@ export default function App() {
     const expectedMoveSeq = getMoveSeq(gameData);
     setMovePending(true);
     setMatchError('');
+    setConnectionState((current) => (current === 'offline' ? current : 'connecting'));
     try {
+      if (moveApiEnabled) {
+        try {
+          let idToken = null;
+          try {
+            idToken = await user.getIdToken?.();
+          } catch {
+            idToken = null;
+          }
+          const apiResult = await submitAuthoritativeMove({
+            gameId,
+            from: moveObj.from,
+            to: moveObj.to,
+            promotion: moveObj.promotion || null,
+            expectedMoveSeq,
+            idToken,
+            idempotencyKey: `${gameId}:${expectedMoveSeq}:${moveObj.from}:${moveObj.to}:${moveObj.promotion || ''}`,
+          });
+          if (apiResult?.ok) {
+            // Authoritative backend accepted move; Firestore listener will apply the update.
+            return;
+          }
+        } catch (apiError) {
+          if (moveApiStrict || !['NOT_CONFIGURED', 'SERVICE_UNAVAILABLE'].includes(apiError?.code)) {
+            throw apiError;
+          }
+        }
+      }
+
       const gameRef = doc(db, GAMES_COLLECTION, gameId);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(gameRef);
@@ -1187,10 +1217,15 @@ export default function App() {
       });
     } catch (error) {
       console.error('Move error:', error);
-      if (error?.message === 'RESYNC_REQUIRED') {
+      if (error?.message === 'RESYNC_REQUIRED' || error?.code === 'RESYNC_REQUIRED') {
         setConnectionState('reconnecting');
         pushToast('Board was out of date. Resyncing latest position...', 'error');
         setMatchError('Board changed on another client. Resyncing...');
+      } else if (error?.code === 'STALE_MOVE_SEQ') {
+        setConnectionState('reconnecting');
+        setMatchError('Position changed before your move landed. Resyncing...');
+      } else if (error?.code === 'SERVICE_UNAVAILABLE') {
+        setMatchError('Move service unavailable. Falling back to direct sync.');
       } else {
         setMatchError(error.message || 'Failed to make move');
       }
