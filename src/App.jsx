@@ -724,7 +724,7 @@ export default function App() {
     const delay = Math.max(0, 60000 - (Date.now() - createdMs));
     const timer = setTimeout(addBotOpponent, delay);
     return () => clearTimeout(timer);
-  }, [isOnline, gameData?.status, gameData?.whiteId, gameData?.blackId, gameData?.createdAt, user?.uid, addBotOpponent]);
+  }, [isOnline, gameData, user, addBotOpponent]);
 
   // ── Trigger AI move when it's the bot's turn in an online bot game ──
   useEffect(() => {
@@ -736,7 +736,7 @@ export default function App() {
     if (botMovePendingRef.current) return;
     botMovePendingRef.current = true;
     requestAiMove(gameData.fen, [], [], 'hard');
-  }, [isOnline, gameData?.status, gameData?.blackId, gameData?.fen, requestAiMove]);
+  }, [isOnline, gameData, requestAiMove]);
 
   // ── Game actions ──
   const resetPractice = () => {
@@ -1002,7 +1002,7 @@ export default function App() {
     }
   };
 
-  const handlePromotionChoice = useCallback((promotion) => {
+  const handlePromotionChoice = (promotion) => {
     if (!pendingPromotion) return;
     const moveObj = pendingPromotion.moves.find((move) => move.promotion === promotion) || pendingPromotion.moves[0];
     if (!moveObj) {
@@ -1019,7 +1019,7 @@ export default function App() {
     setSelectedSquare(null);
     setLegalMoves([]);
     setPendingPromotion(null);
-  }, [gameId, isOnline, pendingPromotion]);
+  };
 
   const handleBotOnlineMove = useCallback(async (moveMsg) => {
     if (!gameId || !db) return;
@@ -1593,14 +1593,25 @@ export default function App() {
 
   const homePageProps = {
     user,
+    profile,
+    rating,
     firebaseEnabled,
+    incomingChallenge,
     onPlayGuest: () => {
       setAiEnabled(false);
       resetPractice();
       navigateToPage('game');
     },
-    onSignIn: () => navigateToPage(user ? 'game' : 'signin'),
+    onSignIn: () => navigateToPage('signin'),
+    onOpenAccount: () => {
+      if (user) setProfileModalUid(user.uid);
+    },
     onHowItWorks: () => navigateToPage('learn'),
+    onAcceptChallenge: async () => {
+      await acceptChallenge();
+      navigateToPage('game');
+    },
+    onDeclineChallenge: declineChallenge,
   };
 
   const signInPageProps = {

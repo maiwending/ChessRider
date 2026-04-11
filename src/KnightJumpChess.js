@@ -59,7 +59,7 @@ class KnightJumpChess extends Chess {
       if (tempGame._kings) {
         this._kings = { ...tempGame._kings };
       }
-    } catch (e) {
+    } catch (_e) {
       // FEN might be invalid during test setup (e.g., missing kings)
       // Just skip - the _pieceKey override will handle BigInt conversions
     }
@@ -504,7 +504,7 @@ class KnightJumpChess extends Chess {
     if (typeof move === 'string') {
       try {
         return super.move(move, options);
-      } catch (e) {
+      } catch (_e) {
         return null;
       }
     }
@@ -525,7 +525,7 @@ class KnightJumpChess extends Chess {
   /**
    * Execute a jump move
    */
-  makeJumpMove(move, options = {}) {
+  makeJumpMove(move, _options = {}) {
     const jumpMoves = this.generateJumpMoves();
     
     // Find matching jump move

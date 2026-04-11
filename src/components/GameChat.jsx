@@ -413,6 +413,9 @@ export default function GameChat({
       activeCurrentVoiceUnsubRef.current?.();
       activeCurrentVoiceUnsubRef.current = null;
     };
+  // startCallerSession, joinCallerSession, and leaveVoice intentionally capture the latest refs/state.
+  // This effect should restart only when the session inputs change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, currentUserName, gameId, liveVoiceChat, playerColor, voiceEnabled]);
 
   useEffect(() => {
@@ -427,6 +430,8 @@ export default function GameChat({
     if (liveVoiceChat) return undefined;
     if (voiceEnabled) leaveVoice().catch(() => {});
     return undefined;
+  // leaveVoice intentionally uses current refs so this reacts only to voice availability/toggle state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveVoiceChat, voiceEnabled]);
 
   useEffect(() => () => {

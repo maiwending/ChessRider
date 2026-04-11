@@ -119,8 +119,6 @@ export function AuthProvider({ children }) {
           setDoc(profileRef, { online: false, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
         };
         window.addEventListener('beforeunload', handleUnload);
-        // Store cleanup handle on the closure so cleanup() can remove it
-        // eslint-disable-next-line no-use-before-define
         unloadCleanup = () => window.removeEventListener('beforeunload', handleUnload);
 
         unsubscribe = onSnapshot(profileRef, (docSnap) => {

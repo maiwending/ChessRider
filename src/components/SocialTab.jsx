@@ -14,6 +14,13 @@ import {
   where
 } from 'firebase/firestore';
 import { db, firebaseEnabled } from '../utils/firebase.js';
+import {
+  DEFAULT_TEXT_AI_BASE_URL,
+  isBotUid,
+  loadBotChatMessages,
+  requestTextAiReply,
+  saveBotChatMessages,
+} from '../utils/textAi.js';
 
 // ─── Announcements ────────────────────────────────────────────────────────────
 
@@ -37,7 +44,7 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
   }, []);
 
   const handleSend = async () => {
-    if (!currentUser || !text.trim() || !db) return;
+    if (!currentUser || !text.trim()) return;
     setSending(true);
     setError('');
     try {
@@ -106,13 +113,19 @@ function AnnouncementsSection({ currentUser, currentUserName, currentUserPhotoUR
 
 // ─── DM Conversation ──────────────────────────────────────────────────────────
 
-function DmConversation({ chatId, partnerName, currentUser, currentUserName, onBack }) {
+function DmConversation({ chatId, partnerUid, partnerName, currentUser, currentUserName, onBack }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
   const bottomRef = useRef(null);
+  const isBotConversation = isBotUid(partnerUid);
 
   useEffect(() => {
+    if (isBotConversation) {
+      setMessages(loadBotChatMessages(chatId));
+      return undefined;
+    }
     if (!firebaseEnabled || !db || !chatId) return;
     const q = query(
       collection(db, 'dms', chatId, 'messages'),
@@ -128,7 +141,7 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
         }, { merge: true }).catch(() => {});
       }
     });
-  }, [chatId]);
+  }, [chatId, currentUser, isBotConversation]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -136,18 +149,65 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
 
   // Ensure the parent DM doc exists
   useEffect(() => {
+    if (isBotConversation) return;
     if (!firebaseEnabled || !db || !chatId || !currentUser) return;
     setDoc(doc(db, 'dms', chatId), {
       participants: chatId.split('_'),
       updatedAt: serverTimestamp()
     }, { merge: true });
-  }, [chatId, currentUser]);
+  }, [chatId, currentUser, isBotConversation]);
 
   const handleSend = async () => {
-    if (!currentUser || !text.trim() || !db) return;
+    if (!currentUser || !text.trim()) return;
     setSending(true);
+    setError('');
     const msg = text.trim();
     setText('');
+    if (isBotConversation) {
+      const nextMessages = [
+        ...messages,
+        {
+          id: `${Date.now()}-user`,
+          text: msg,
+          senderId: currentUser.uid,
+          senderName: currentUserName,
+          createdAt: Date.now(),
+        },
+      ];
+      setMessages(nextMessages);
+      saveBotChatMessages(chatId, nextMessages);
+      try {
+        const history = nextMessages.map((message) => ({
+          role: message.senderId === currentUser.uid ? 'user' : 'assistant',
+          content: message.text,
+        }));
+        const reply = await requestTextAiReply({ history });
+        const repliedMessages = [
+          ...nextMessages,
+          {
+            id: `${Date.now()}-bot`,
+            text: reply,
+            senderId: partnerUid,
+            senderName: partnerName,
+            createdAt: Date.now(),
+          },
+        ];
+        setMessages(repliedMessages);
+        saveBotChatMessages(chatId, repliedMessages);
+      } catch (sendError) {
+        setError(sendError?.message || `Text AI is unavailable at ${DEFAULT_TEXT_AI_BASE_URL}`);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!db) {
+      setSending(false);
+      setError('Direct messages are unavailable until Firebase is configured.');
+      return;
+    }
+
     try {
       await addDoc(collection(db, 'dms', chatId, 'messages'), {
         text: msg,
@@ -188,6 +248,7 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
         ))}
         <div ref={bottomRef} />
       </div>
+      {error && <p className="error-text" style={{ margin: '0 12px 8px' }}>{error}</p>}
       <div className="dm-input-row">
         <input
           className="select dm-input"
@@ -212,7 +273,7 @@ function DmConversation({ chatId, partnerName, currentUser, currentUserName, onB
 
 // ─── Friends Section ──────────────────────────────────────────────────────────
 
-function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick, onChallengeFriend }) {
+function FriendsSection({ currentUser, currentUserName: _currentUserName, onOpenDm, onPlayerClick, onChallengeFriend }) {
   const [outgoing, setOutgoing] = useState([]);
   const [incoming, setIncoming] = useState([]);
   const [presence, setPresence] = useState({});
@@ -231,7 +292,9 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick,
   }, [currentUser]);
 
   const friends = [
-    ...outgoing.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.to, name: r.toName, reqId: r.id })),
+    ...outgoing
+      .filter((r) => r.status === 'accepted' || (isBotUid(r.to) && r.status === 'pending'))
+      .map((r) => ({ uid: r.to, name: r.toName, reqId: r.id })),
     ...incoming.filter((r) => r.status === 'accepted').map((r) => ({ uid: r.from, name: r.fromName, reqId: r.id }))
   ];
   const pendingIn = incoming.filter((r) => r.status === 'pending');
@@ -309,7 +372,7 @@ function FriendsSection({ currentUser, currentUserName, onOpenDm, onPlayerClick,
             >
               Message
             </button>
-            {onChallengeFriend && (
+            {onChallengeFriend && !isBotUid(f.uid) && (
               <button
                 className="btn btn-primary"
                 style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
@@ -352,13 +415,14 @@ export default function SocialTab({
       setSubTab('friends');
       onPendingDmHandled?.();
     }
-  }, [pendingDm]);
+  }, [pendingDm, onPendingDmHandled]);
 
   return (
     <div className="tab-panel social-tab">
       {activeDm ? (
         <DmConversation
           chatId={activeDm.chatId}
+          partnerUid={activeDm.partnerUid}
           partnerName={activeDm.partnerName}
           currentUser={currentUser}
           currentUserName={currentUserName}
