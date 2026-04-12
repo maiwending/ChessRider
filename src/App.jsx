@@ -136,6 +136,7 @@ const getPageFromLocation = () => {
   if (/\/Tutorials\/?$/.test(window.location.pathname)) return 'tutorials';
   if (/\/Learn\/?$/.test(window.location.pathname)) return 'learn';
   if (/\/Play\/?$/.test(window.location.pathname)) return 'game';
+  if (/\/uptime\/?$/i.test(window.location.pathname)) return 'uptime';
   return 'home';
 };
 
@@ -146,6 +147,7 @@ const setBrowserPage = (page, replace = false) => {
   else if (page === 'tutorials') nextUrl = `${APP_BASE_PATH}/Tutorials`;
   else if (page === 'learn') nextUrl = `${APP_BASE_PATH}/Learn`;
   else if (page === 'game') nextUrl = `${APP_BASE_PATH}/Play`;
+  else if (page === 'uptime') nextUrl = `${APP_BASE_PATH}/uptime`;
   const method = replace ? 'replaceState' : 'pushState';
   window.history[method](null, '', nextUrl);
 };

@@ -5,6 +5,7 @@ import HomePage from './HomePage.jsx';
 
 const LearnPage = lazy(() => import('./LearnPage.jsx'));
 const SignInPage = lazy(() => import('./SignInPage.jsx'));
+const UptimePage = lazy(() => import('./UptimePage.jsx'));
 
 const pageFallback = (
   <div className="page-loading">
@@ -40,6 +41,14 @@ export default function AppPageRouter({
     return (
       <Suspense fallback={pageFallback}>
         <LearnPage onBack={() => onNavigate('learn')} tutorialsOnly />
+      </Suspense>
+    );
+  }
+
+  if (currentPage === 'uptime') {
+    return (
+      <Suspense fallback={pageFallback}>
+        <UptimePage onBack={() => onNavigate('home')} />
       </Suspense>
     );
   }

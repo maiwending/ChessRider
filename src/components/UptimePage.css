@@ -1,0 +1,179 @@
+.uptime-page {
+  min-height: 100vh;
+  background: var(--bg-body);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+.uptime-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.uptime-back-btn {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background var(--transition-fast);
+  white-space: nowrap;
+}
+.uptime-back-btn:hover { background: rgba(255, 255, 255, 0.10); }
+
+.uptime-header-title h1 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-bright);
+  margin: 0;
+}
+.uptime-header-title p {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin: 2px 0 0;
+}
+
+/* ── Body ── */
+.uptime-body {
+  max-width: 780px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px;
+}
+
+/* ── Overall pill ── */
+.uptime-overall-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.uptime-overall-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 24px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.uptime-overall-ok      { background: rgba(74, 154, 74, 0.15); color: var(--success); border: 1px solid rgba(74, 154, 74, 0.35); }
+.uptime-overall-degraded{ background: rgba(180, 130, 30, 0.15); color: #c8902a;        border: 1px solid rgba(180, 130, 30, 0.35); }
+.uptime-overall-down    { background: rgba(192, 48, 48, 0.15); color: var(--danger);   border: 1px solid rgba(192, 48, 48, 0.35); }
+.uptime-overall-loading { background: var(--bg-panel); color: var(--text-muted); border: 1px solid var(--border); }
+
+.uptime-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.uptime-countdown { display: flex; align-items: center; gap: 6px; }
+.uptime-countdown strong { color: var(--text-muted); }
+
+.uptime-refresh-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color var(--transition-fast);
+}
+.uptime-refresh-btn:hover { color: var(--text-bright); }
+
+/* ── Error ── */
+.uptime-error {
+  background: var(--danger-soft);
+  border: 1px solid rgba(192, 48, 48, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-bottom: 20px;
+}
+
+/* ── Service grid ── */
+.uptime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.uptime-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  border-left-width: 3px;
+}
+.uptime-card-ok       { border-left-color: var(--success); }
+.uptime-card-degraded { border-left-color: #c8902a; }
+.uptime-card-down     { border-left-color: var(--danger); }
+
+.uptime-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.uptime-card-label {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-bright);
+}
+
+.uptime-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+}
+.uptime-sep { opacity: 0.4; }
+
+.uptime-status-text { font-weight: 500; }
+.uptime-status-ok       { color: var(--success); }
+.uptime-status-degraded { color: #c8902a; }
+.uptime-status-down     { color: var(--danger); }
+
+/* ── Status dots ── */
+.uptime-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.uptime-dot-ok       { background: var(--success); box-shadow: 0 0 5px var(--success); }
+.uptime-dot-degraded { background: #c8902a;         box-shadow: 0 0 5px #c8902a; }
+.uptime-dot-down     { background: var(--danger);   box-shadow: 0 0 5px var(--danger); }
+
+/* ── Loading spinner ── */
+.uptime-spinner-wrap { display: flex; justify-content: center; padding: 48px 0; }
+.uptime-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: uptime-spin 0.8s linear infinite;
+}
+@keyframes uptime-spin { to { transform: rotate(360deg); } }
