@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import DmConversation from './DmConversation.jsx';
 
 const addDoc = vi.fn();
@@ -49,6 +49,10 @@ describe('DmConversation', () => {
     onSnapshot.mockReturnValue(() => {});
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders and replies in a bot conversation without firestore writes', async () => {
     const user = userEvent.setup();
     requestTextAiReply.mockResolvedValue('Bonjour.');
@@ -74,9 +78,14 @@ describe('DmConversation', () => {
     await waitFor(() => expect(screen.getByText('Bonjour.')).toBeInTheDocument());
   });
 
-  it('shows an error when the bot endpoint fails', async () => {
-    const user = userEvent.setup();
-    requestTextAiReply.mockRejectedValue(new Error('Endpoint down'));
+  it('silently retries on 405 and posts reply when AI becomes available', async () => {
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const err405 = new Error('Text AI request failed with 405');
+    err405.status = 405;
+    requestTextAiReply
+      .mockRejectedValueOnce(err405)
+      .mockResolvedValueOnce('AI is back');
 
     render(
       <DmConversation
@@ -92,6 +101,10 @@ describe('DmConversation', () => {
     await user.type(screen.getByPlaceholderText(/type a message/i), 'hello');
     await user.click(screen.getByRole('button', { name: /send/i }));
 
-    await waitFor(() => expect(screen.getByText('Endpoint down')).toBeInTheDocument());
+    expect(screen.queryByText(/405/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/text ai request failed/i)).not.toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(2100);
+    await waitFor(() => expect(screen.getByText('AI is back')).toBeInTheDocument());
   });
 });
