@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import DmConversation from './DmConversation.jsx';
@@ -80,7 +80,6 @@ describe('DmConversation', () => {
 
   it('silently retries on 405 and posts reply when AI becomes available', async () => {
     vi.useFakeTimers();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const err405 = new Error('Text AI request failed with 405');
     err405.status = 405;
     requestTextAiReply
@@ -98,13 +97,17 @@ describe('DmConversation', () => {
       />
     );
 
-    await user.type(screen.getByPlaceholderText(/type a message/i), 'hello');
-    await user.click(screen.getByRole('button', { name: /send/i }));
+    fireEvent.change(screen.getByPlaceholderText(/type a message/i), {
+      target: { value: 'hello' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
 
     expect(screen.queryByText(/405/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/text ai request failed/i)).not.toBeInTheDocument();
 
+    await Promise.resolve();
     await vi.advanceTimersByTimeAsync(2100);
-    await waitFor(() => expect(screen.getByText('AI is back')).toBeInTheDocument());
+    await Promise.resolve();
+    expect(screen.getByText('AI is back')).toBeInTheDocument();
   });
 });
