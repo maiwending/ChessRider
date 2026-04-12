@@ -142,6 +142,28 @@ Additional hardening now included in the endpoint:
 - Hard rate limits (per user+game burst and per-user minute window)
 - Structured JSON logs (`move_request_received`, `move_request_accepted`, `move_request_rejected`)
 
+## 🤖 Text AI on `knightaurachess.com`
+
+Browser chat now defaults to same-origin `/api/text-ai` on:
+- `https://knightaurachess.com`
+- `https://www.knightaurachess.com`
+
+Configure Cloudflare Function env vars:
+
+```env
+TEXT_AI_UPSTREAM_URL="https://your-llm-endpoint.example/v1/chat/completions"
+TEXT_AI_UPSTREAM_AUTH_BEARER="optional_api_key_or_token"
+```
+
+Route:
+- `functions/api/text-ai.js` proxies chat payloads to your upstream provider.
+
+For production builds you can still override explicitly:
+
+```env
+VITE_TEXT_AI_BASE_URL="/api/text-ai"
+```
+
 ## 🚀 Deployment (Cloudflare Pages)
 
 This project is configured for seamless deployment via Cloudflare Pages:

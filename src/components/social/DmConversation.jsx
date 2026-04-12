@@ -27,12 +27,76 @@ export default function DmConversation({
   currentUserName,
   onBack,
 }) {
+  const BOT_RETRY_BASE_MS = 2000;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef(null);
+  const retryTimersRef = useRef(new Set());
+  const unmountedRef = useRef(false);
   const isBotConversation = isBotUid(partnerUid);
+
+  const isRetryableBotError = (sendError) => {
+    const status = Number(sendError?.status);
+    const message = String(sendError?.message || '').toLowerCase();
+    return (
+      status === 405 ||
+      status === 404 ||
+      status === 429 ||
+      status === 503 ||
+      message.includes('405') ||
+      message.includes('not configured') ||
+      message.includes('service unavailable')
+    );
+  };
+
+  const clearRetryTimer = (timerId) => {
+    clearTimeout(timerId);
+    retryTimersRef.current.delete(timerId);
+  };
+
+  const appendBotReply = (reply, fallbackMessages = null) => {
+    const botMessage = {
+      id: `${Date.now()}-bot`,
+      text: reply,
+      senderId: partnerUid,
+      senderName: partnerName,
+      createdAt: Date.now(),
+    };
+    setMessages((previous) => {
+      const base = Array.isArray(fallbackMessages) && fallbackMessages.length > previous.length
+        ? fallbackMessages
+        : previous;
+      const updated = [...base, botMessage];
+      saveBotChatMessages(chatId, updated);
+      return updated;
+    });
+  };
+
+  const scheduleBotReplyRetry = (history, attempt = 1) => {
+    if (unmountedRef.current) return;
+    const delay = Math.min(15000, BOT_RETRY_BASE_MS + ((attempt - 1) * 1000));
+    const timerId = setTimeout(async () => {
+      clearRetryTimer(timerId);
+      if (unmountedRef.current) return;
+      try {
+        const reply = await requestTextAiReply({ history });
+        if (unmountedRef.current) return;
+        appendBotReply(reply);
+        setError('');
+      } catch (retryError) {
+        if (isRetryableBotError(retryError)) {
+          scheduleBotReplyRetry(history, attempt + 1);
+          return;
+        }
+        if (!unmountedRef.current) {
+          setError(retryError?.message || `Text AI is unavailable at ${DEFAULT_TEXT_AI_BASE_URL}`);
+        }
+      }
+    }, delay);
+    retryTimersRef.current.add(timerId);
+  };
 
   useEffect(() => {
     if (isBotConversation) {
@@ -58,6 +122,12 @@ export default function DmConversation({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => () => {
+    unmountedRef.current = true;
+    retryTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    retryTimersRef.current.clear();
+  }, []);
 
   useEffect(() => {
     if (isBotConversation) return;
@@ -94,20 +164,18 @@ export default function DmConversation({
           content: message.text,
         }));
         const reply = await requestTextAiReply({ history });
-        const repliedMessages = [
-          ...nextMessages,
-          {
-            id: `${Date.now()}-bot`,
-            text: reply,
-            senderId: partnerUid,
-            senderName: partnerName,
-            createdAt: Date.now(),
-          },
-        ];
-        setMessages(repliedMessages);
-        saveBotChatMessages(chatId, repliedMessages);
+        appendBotReply(reply, nextMessages);
       } catch (sendError) {
-        setError(sendError?.message || `Text AI is unavailable at ${DEFAULT_TEXT_AI_BASE_URL}`);
+        if (isRetryableBotError(sendError)) {
+          setError('');
+          const history = nextMessages.map((message) => ({
+            role: message.senderId === currentUser.uid ? 'user' : 'assistant',
+            content: message.text,
+          }));
+          scheduleBotReplyRetry(history, 1);
+        } else {
+          setError(sendError?.message || `Text AI is unavailable at ${DEFAULT_TEXT_AI_BASE_URL}`);
+        }
       } finally {
         setSending(false);
       }
