@@ -16,7 +16,8 @@
       "Read(//usr/local/bin/**)",
       "Read(//home/wmai/.nvm/versions/**)",
       "Bash(/opt/LM-Studio/resources/app/.webpack/bin/node node_modules/.bin/vite build)",
-      "Bash(/opt/LM-Studio/resources/app/.webpack/bin/node node_modules/vite/bin/vite.js build)"
+      "Bash(/opt/LM-Studio/resources/app/.webpack/bin/node node_modules/vite/bin/vite.js build)",
+      "Bash(git stash:*)"
     ]
   }
 }

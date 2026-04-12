@@ -78,11 +78,15 @@ export async function requestTextAiReply({
   model = DEFAULT_TEXT_AI_MODEL,
   baseUrl = DEFAULT_TEXT_AI_BASE_URL,
 }) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
   const response = await fetch(baseUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
+    signal: controller.signal,
     body: JSON.stringify({
       model,
       messages: [
@@ -94,6 +98,8 @@ export async function requestTextAiReply({
       stream: false,
     }),
   });
+
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();

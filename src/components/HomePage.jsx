@@ -19,12 +19,22 @@ function getGameSummary(game, userId) {
   const opponentName = isWhite
     ? (game.blackName || 'Opponent')
     : (game.whiteName || 'Opponent');
+  const status = String(game.status || '').toLowerCase();
+  const resultText = String(game.result || '').toLowerCase();
 
-  if (game.status === 'draw') {
+  if (status === 'draw' || resultText.includes('draw')) {
     return { result: 'Draw', className: 'draw', opponentName };
   }
 
-  const userWon = game.winner && game.winner === userId;
+  if (status === 'abandoned' && !game.winner) {
+    return { result: 'Abandoned', className: 'draw', opponentName };
+  }
+
+  if (!game.winner) {
+    return { result: 'Draw', className: 'draw', opponentName };
+  }
+
+  const userWon = game.winner === userId;
   return {
     result: userWon ? 'Win' : 'Loss',
     className: userWon ? 'win' : 'loss',

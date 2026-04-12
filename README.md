@@ -2,7 +2,7 @@
 
 A full-stack, real-time multiplayer chess variant where pieces near knights gain the ability to jump over blocking pieces. 
 
-KNightAuraChess features a completely custom game engine that natively supports advanced jump logic, a resilient offline Artificial Intelligence opponent, and a fully integrated Firebase Cloud backend for anonymous & registered online matchmaking with a complete Elo Rating system.
+KnightAuraChess features a completely custom game engine that natively supports advanced jump logic, a resilient offline Artificial Intelligence opponent, and a fully integrated Firebase Cloud backend for anonymous & registered online matchmaking with a complete Elo Rating system.
 
 ## 🌟 Key Features
 
