@@ -1,6 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AiWorker from './workers/aiWorker.js?worker';
-import { useOnlineClock } from './hooks/useOnlineClock.js';
+import { useOnlineClock } from './workers/useOnlineClock.js';
 import {
   addDoc,
   collection,
