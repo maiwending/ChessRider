@@ -136,24 +136,20 @@ function storeKiller(ply, key) {
 const ADJ_D  = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 const LEAP_D = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 
-/** Returns a Set of square names that are inside `color`'s knight aura. */
-function buildAura(game, color) {
-  const aura = new Set();
-  for (let ri = 0; ri < 8; ri++) {
-    for (let fi = 0; fi < 8; fi++) {
-      const p = game.get(FILES[fi] + RANKS[ri]);
-      if (!p || p.type !== 'n' || p.color !== color) continue;
-      for (const [dr, dc] of ADJ_D) {
-        const r = ri + dr, f = fi + dc;
-        if (r >= 0 && r < 8 && f >= 0 && f < 8) aura.add(FILES[f] + RANKS[r]);
-      }
-      for (const [dr, dc] of LEAP_D) {
-        const r = ri + dr, f = fi + dc;
-        if (r >= 0 && r < 8 && f >= 0 && f < 8) aura.add(FILES[f] + RANKS[r]);
-      }
+/** Adds squares around a knight at (ri, fi) to the provided aura Set using flat indices. */
+function addKnightToAura(ri, fi, auraSet) {
+  for (const [dr, dc] of ADJ_D) {
+    const r = ri + dr, f = fi + dc;
+    if (r >= 0 && r < 8 && f >= 0 && f < 8) {
+      auraSet.add(r * 8 + f);
     }
   }
-  return aura;
+  for (const [dr, dc] of LEAP_D) {
+    const r = ri + dr, f = fi + dc;
+    if (r >= 0 && r < 8 && f >= 0 && f < 8) {
+      auraSet.add(r * 8 + f);
+    }
+  }
 }
 
 // ── Static evaluation (White perspective, positive = good for White) ──
@@ -163,30 +159,36 @@ function evaluate(game) {
   let wBishops = 0, bBishops = 0;
   let wMinorMaterial = 0, bMinorMaterial = 0;
 
-  // First pass: collect pieces and non-pawn material for endgame detection
+  const board = game.board(); // Get 8x8 array once
   const pieces = [];
+  const wKnightCoords = [];
+  const bKnightCoords = [];
+
+  // Single pass: collect pieces and detect knight positions for aura
   for (let ri = 0; ri < 8; ri++) {
     for (let fi = 0; fi < 8; fi++) {
-      const sq = FILES[fi] + RANKS[ri];
-      const p = game.get(sq);
+      const p = board[ri][fi];
       if (!p) continue;
-      pieces.push({ p, ri, fi, sq });
+      pieces.push({ p, ri, fi, idx: ri * 8 + fi });
       if (p.type !== 'p' && p.type !== 'k') {
         if (p.color === 'w') wMinorMaterial += PIECE_VALUE[p.type];
         else bMinorMaterial += PIECE_VALUE[p.type];
+      }
+      if (p.type === 'n') {
+        if (p.color === 'w') wKnightCoords.push([ri, fi]);
+        else bKnightCoords.push([ri, fi]);
       }
     }
   }
 
   const isEndgame = (wMinorMaterial + bMinorMaterial) < 1800;
-
-  // Build aura sets (cheap — only scans for knights)
-  const wAura = buildAura(game, 'w');
-  const bAura = buildAura(game, 'b');
+  const wAura = new Set();
+  const bAura = new Set();
+  for (const [r, f] of wKnightCoords) addKnightToAura(r, f, wAura);
+  for (const [r, f] of bKnightCoords) addKnightToAura(r, f, bAura);
 
   // Second pass: score every piece
-  for (const { p, ri, fi, sq } of pieces) {
-    const idx = ri * 8 + fi;
+  for (const { p, ri, fi, idx } of pieces) {
     const val = PIECE_VALUE[p.type];
 
     // Choose PST (king switches to endgame table when material is low)
@@ -201,8 +203,8 @@ function evaluate(game) {
     // Knight-Aura bonus: non-king pieces inside friendly aura gain mobility
     let auraBonus = 0;
     if (p.type !== 'k') {
-      if (p.color === 'w' && wAura.has(sq)) auraBonus = 18;
-      else if (p.color === 'b' && bAura.has(sq)) auraBonus = 18;
+      if (p.color === 'w' && wAura.has(idx)) auraBonus = 18;
+      else if (p.color === 'b' && bAura.has(idx)) auraBonus = 18;
     }
 
     if (p.type === 'k') { if (p.color === 'w') wKing = true; else bKing = true; }

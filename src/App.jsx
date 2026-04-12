@@ -1,5 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AiWorker from './workers/aiWorker.js?worker';
+import { useOnlineClock } from './hooks/useOnlineClock.js';
 import {
   addDoc,
   collection,
@@ -511,43 +512,11 @@ export default function App() {
   }, [gameData?.timeControl, playerColor]);
 
   // Online clock countdown
-  useEffect(() => {
-    if (!isOnline || !gameData || gameData.status !== 'active') {
-      if (isOnline) {
-        setClockWhite(null);
-        setClockBlack(null);
-      }
-      return;
-    }
-    if (!gameData.timeControl) return;
-    // lastMoveAt may briefly be null on the first snapshot after toggleReady
-    const lastMoveMs = gameData.lastMoveAt?.toMillis?.() ?? Date.now();
-
-    timeoutFiredRef.current = false;
-    const turn = gameData.fen?.split(' ')?.[1] ?? 'w'; // whose clock is ticking
-
-    const tick = () => {
-      const elapsed = Math.max(0, (Date.now() - lastMoveMs) / 1000);
-      const wt = turn === 'w'
-        ? Math.max(0, (gameData.whiteTimeLeft ?? gameData.timeControl) - elapsed)
-        : (gameData.whiteTimeLeft ?? gameData.timeControl);
-      const bt = turn === 'b'
-        ? Math.max(0, (gameData.blackTimeLeft ?? gameData.timeControl) - elapsed)
-        : (gameData.blackTimeLeft ?? gameData.timeControl);
-      setClockWhite(wt);
-      setClockBlack(bt);
-      // Only the player on the clock submits the timeout
-      if (!timeoutFiredRef.current && playerColor === turn) {
-        if (turn === 'w' && wt <= 0) { timeoutFiredRef.current = true; handleTimeout('w'); }
-        if (turn === 'b' && bt <= 0) { timeoutFiredRef.current = true; handleTimeout('b'); }
-      }
-    };
-
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameData?.status, gameData?.lastMoveAt, gameData?.whiteTimeLeft, gameData?.blackTimeLeft, gameData?.timeControl, isOnline, playerColor]);
+  const { clockWhite: onlineWhite, clockBlack: onlineBlack } = useOnlineClock(
+    isOnline ? gameData : null,
+    playerColor,
+    handleTimeout
+  );
 
   // Local AI countdown clocks
   useEffect(() => {
@@ -585,6 +554,14 @@ export default function App() {
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline, aiEnabled, selectedTimeControl, moveTimestamps, currentMoveStartTime, game, localResult]);
+
+  // Unify clock state for the UI
+  useEffect(() => {
+    if (isOnline) {
+      setClockWhite(onlineWhite);
+      setClockBlack(onlineBlack);
+    }
+  }, [isOnline, onlineWhite, onlineBlack]);
 
   const opponentName = useMemo(() => {
     if (!gameData) return 'Opponent';
