@@ -1,38 +1,39 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives Claude Code repository-specific guidance for KnightAuraChess.
 
-## Build, Run, and Test Commands
+## Build, Run, Test
+
+Node requirement:
+- `>=20.19.0` (see `package.json`)
+
+Commands:
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server (http://localhost:5173)
 npm run dev
-
-# Build for production (outputs to dist/)
 npm run build
-
-# Preview production build locally
 npm run preview
 
-# Run unit tests (Node.js, no test framework — just console output)
-npm test
-# or equivalently:
-node src/test.js
+npm run lint
+npm run test:engine
+npm run test:ui
+npm run test:e2e
+npm run test
 
-# Run the secondary logic smoke test
-node src/test-game-logic.mjs
+# Firestore rules tests
+npm run test:rules:emulator
 ```
 
-The dev server proxies `/ai` requests to `http://localhost:8000` by default (configurable via `VITE_DEV_AI_PROXY_TARGET`).
+Notes:
+- `npm run test:rules` requires Firestore emulator host/port; use `test:rules:emulator`.
+- CI runs lint + test + build on Node 20.19 and 22.
 
-### Required Environment Variables
+## Environment Variables
 
-Create a `.env` file at the project root with your Firebase project credentials:
+Firebase (frontend):
 
-```
+```env
 VITE_FIREBASE_API_KEY=
 VITE_FIREBASE_AUTH_DOMAIN=
 VITE_FIREBASE_PROJECT_ID=
@@ -41,119 +42,128 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 ```
 
-Optional:
+Optional frontend:
+
+```env
+VITE_AI_DIFFICULTY=medium             # easy|medium|hard|expert
+VITE_BASE_PATH=/                      # override Vite base path
+VITE_TEXT_AI_BASE_URL=/api/text-ai    # explicit text AI endpoint
+VITE_TEXT_AI_MODEL=deepseek/deepseek-r1-0528-qwen3-8b
+
+VITE_MOVE_API_ENABLED=true
+VITE_MOVE_API_STRICT=true
+VITE_MOVE_API_URL=/api/move
 ```
-VITE_AI_DIFFICULTY=medium   # easy | medium | hard | expert
-VITE_BASE_PATH=/            # overrides the Vite base path
+
+Cloudflare Functions backend env:
+
+```env
+FIREBASE_PROJECT_ID=
+FIREBASE_WEB_API_KEY=
+FIREBASE_SERVICE_ACCOUNT_EMAIL=
+FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY=
+
+TEXT_AI_UPSTREAM_URL=
+TEXT_AI_UPSTREAM_AUTH_BEARER=
 ```
 
-If Firebase env vars are missing, the app runs in **local practice mode** (no multiplayer, no Elo persistence). The `firebaseEnabled` flag in `src/utils/firebase.js` gates all Firebase operations throughout the codebase.
+## Secrets (Do Not Commit Tokens)
 
-### Deployment
+Never place real tokens in source files, `CLAUDE.md`, or git history.
 
-Configured for **Cloudflare Pages** (`wrangler.toml`): build command is `npx vite build`, output directory is `dist`, SPA routing enabled. Firestore rules live in `firestore.rules` and are deployed separately via the Firebase Console.
+Use these secret names instead:
 
----
+- GitHub Actions secrets:
+  - `GH_PAT_REPO_RW` (repo content write if needed)
+  - `GH_PAT_ACTIONS_RW` (only if workflow updates/dispatch are required)
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - `VITE_FIREBASE_STORAGE_BUCKET`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+  - `VITE_FIREBASE_APP_ID`
 
-## Architecture Overview
+- Cloudflare (Pages/Workers) secrets or env:
+  - `FIREBASE_PROJECT_ID`
+  - `FIREBASE_WEB_API_KEY`
+  - `FIREBASE_SERVICE_ACCOUNT_EMAIL`
+  - `FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY`
+  - `TEXT_AI_UPSTREAM_URL`
+  - `TEXT_AI_UPSTREAM_AUTH_BEARER`
 
-This is a React + Vite single-page application. The entire game runs client-side; Firebase Firestore is the only backend.
+- Local development (`.env`, gitignored):
+  - use the same key names above for local testing.
 
-### Key Source Files
+## Deployment Model
 
-```
+- Frontend: Vite SPA deployed to Cloudflare Pages (`wrangler.toml`).
+- Backend APIs (same origin):
+  - `functions/api/move.js`: server-authoritative move execution.
+  - `functions/api/text-ai.js`: proxy endpoint for chat AI.
+- Firestore rules are in `firestore.rules`.
+- Service status dashboard: standalone Cloudflare Worker (`service-worker/`) deployed to `service.knightaurachess.com`.
+  - Deploy: `cd service-worker && npx wrangler deploy`
+  - Access restricted to Firebase user with `displayName === "Mega_penguin123"`.
+  - Secrets (set via `wrangler secret put` inside `service-worker/`):
+    - `FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY` (shared with Pages worker)
+    - `FIREBASE_SERVICE_ACCOUNT_EMAIL`, `FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY` (shared)
+    - `FIREBASE_AUTH_DOMAIN` (e.g. `your-project.firebaseapp.com`)
+    - `FIREBASE_APP_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_STORAGE_BUCKET`
+    - `CF_API_TOKEN` — Cloudflare API token with **Pages:Edit** + **Account:Read** permissions
+    - `CF_ACCOUNT_ID` — Cloudflare account ID (visible in the dashboard sidebar)
+    - `CF_PAGES_PROJECT` — Pages project name (defaults to `knightaurachess`)
+    - `CF_DEPLOY_HOOK` — (optional) Pages deploy hook URL; enables the "Trigger Git Deploy" button
+
+## Architecture Summary
+
+Core files:
+
+```text
 src/
-  KnightJumpChess.js       # Custom game engine — extends chess.js
-  App.jsx                  # Root component (~2000 lines); all game state lives here
-  main.jsx                 # React entry point
-  workers/
-    aiWorker.js            # Web Worker: Negamax AI engine
+  App.jsx                      # Primary app state/controller
+  KnightJumpChess.js           # Variant engine on top of chess.js
+  contexts/AuthContext.jsx     # Firebase auth/profile wiring
+  utils/firebase.js            # Firebase init + firebaseEnabled
+  utils/moveApi.js             # Client wrapper for /api/move
+  utils/textAi.js              # Bot DM Text AI calls + sanitization
+  workers/aiWorker.js          # Web Worker chess AI engine
+  workers/useOnlineClock.js    # Online clock hook
   components/
-    ChessBoard.jsx         # Board UI (wraps react-chessboard)
-    LearnPage.jsx          # Rules/tutorial page
-    LeaderboardPanel.jsx   # Global leaderboard
-    SocialTab.jsx          # Friends / challenges
-    UserProfileModal.jsx   # User profile view
-  contexts/
-    AuthContext.jsx        # Firebase auth + Firestore profile subscription
-  utils/
-    firebase.js            # Firebase SDK init; exports db, auth, firebaseEnabled
-    usernames.js           # Unique display name claim/collision logic
+    BoardShell.jsx
+    GameSidebar.jsx
+    PlayTabPanel.jsx
+    HomePage.jsx
+    social/DmConversation.jsx
 ```
 
-### Game Engine (`KnightJumpChess.js`)
+Game modes:
+- Practice: `!isOnline && !aiEnabled`
+- Local AI: `!isOnline && aiEnabled`
+- Online: `Boolean(gameId)`
 
-`KnightJumpChess` **extends** the `Chess` class from `chess.js`. It overrides:
+`gameId` is persisted in `localStorage` (`cr_gameId`).
 
-- `moves(options)` — returns both standard moves and variant "jump" moves. Jump moves carry a `flags` field containing `'j'` and a `jumpedOver` property identifying the piece that was leapt.
-- `movesUnsafe(options)` — same but skips self-check filtering (used by the AI worker for speed).
-- `move(move, options)` — dispatches to `_applyStandardMove` or `_applyJumpMove` depending on the move type.
-- `put()`, `remove()`, `clear()` — call `_resetInternalState()` to resync internal chess.js hash state after manual board edits.
-- `_pieceKey()` — ensures the return value is always a `BigInt` to avoid mixed-type arithmetic errors in chess.js internals.
-- `isCheckRider()` / `isCheckmateRider()` / `isDraw()` — variant-aware check/checkmate/draw detection.
+## Current Important Behaviors
 
-The **jump eligibility** rule: a piece may jump if `isNearKnight(square, color)` returns `true` — i.e., the square is adjacent to or a knight's-move away from any friendly knight on the board.
+- Promotion supports `q/r/b/n` choices.
+- Online games use `moveSeq` sequencing to prevent stale writes.
+- When enabled, `/api/move` is used for authoritative move handling.
+- Bot DM chat retries retryable Text AI failures (e.g., 405/503) silently.
+- On `knightaurachess.com`, Text AI defaults to same-origin `/api/text-ai`.
 
-Jump move generation is split by piece type: `_getPawnJumpMoves`, `_getSlidingJumpMoves` (rook/bishop/queen), `_getKingJumpMoves`.
+## Firestore Data (High-level)
 
-### AI Engine (`src/workers/aiWorker.js`)
+`games` documents include:
+- player ids/names/ratings
+- `fen`, `moveHistory`, `lastMove`, `moveSeq`
+- `status`, `winner`, `result`
+- clocks: `timeControl`, `whiteTimeLeft`, `blackTimeLeft`, `lastMoveAt`
 
-Runs in a **Web Worker** spawned by `App.jsx` as `AiWorker` (Vite `?worker` import). Communication is message-based:
+`users`, `dms`, `friend_requests`, `game_challenges`, `announcements` are used by profile/social flows.
 
-- **In**: `{ type: 'search', fen, difficulty, id }`
-- **Out**: `{ type: 'result', from, to, promotion, san, score, depth, nodes, timeMs, id }` or `{ type: 'error', message, id }`
+## Editing Guidance for This Repo
 
-The AI uses `KnightJumpChess` directly (same engine as the game). Algorithm features: Negamax with Alpha-Beta pruning, transposition table (depth-preferred, up to 500k entries), quiescence search with delta pruning, Late Move Reduction (LMR), killer move heuristic, piece-square tables, and a Knight-Aura-aware evaluation bonus. Expert difficulty searches depth 8–10.
-
-### App State and Game Modes
-
-`App.jsx` manages three game modes, determined by state:
-
-| Mode | Condition |
-|------|-----------|
-| Practice (local 2P) | `!isOnline && !aiEnabled` |
-| vs AI | `!isOnline && aiEnabled` |
-| Online multiplayer | `isOnline` (gameId is set) |
-
-`isOnline` is derived as `Boolean(gameId)`. The `gameId` is persisted to `localStorage` (`cr_gameId`) so that page refreshes reconnect to an active game.
-
-### Firebase / Firestore Data Model
-
-**Collection: `games`** — one document per match:
-- `whiteId`, `blackId` — Firebase UIDs; bots use `bot_*` prefixed UIDs
-- `whiteName`, `blackName`, `whiteRating`, `blackRating` — denormalized at game creation
-- `fen` — current board position (updated on every move)
-- `status` — `'waiting'` | `'active'` | `'complete'`
-- `timeControl`, `whiteTimeLeft`, `blackTimeLeft`, `lastMoveAt` — clock data
-- `result`, `winner`, `whiteRatingAfter`, `blackRatingAfter` — set on game end
-
-**Collection: `users`** — one document per UID:
-- `uid`, `displayName`, `email`, `photoURL`, `isAnonymous`, `rating`, `updatedAt`
-- Initial rating is 1200.
-
-**Collection: `usernames`** — uniqueness index; keys are lowercased display names.
-
-**Collection: `game_challenges`** — pending friend challenges: `fromUid`, `toUid`, `gameId`, `status`.
-
-### Elo Rating
-
-`calculateElo(playerRating, opponentRating, score, kFactor = 32)` in `App.jsx` uses the standard expected-score formula with K=32. Ratings are written to both the `games` document and the `users` document at game end via `runTransaction`.
-
-### Matchmaking
-
-- **Random**: Player creates a `games` doc with `status: 'waiting'`; another player's client queries for waiting games filtered by rating proximity and joins.
-- **Friend challenge**: Creates a `game_challenges` doc; the target player's client listens and can accept.
-- **Bot auto-fill**: After 1 minute of waiting, a bot from `BOT_POOL` (20 named bots) is added as the opponent. The bot's moves are requested from the AI worker and submitted to Firestore by the white player's client.
-
-### Auth
-
-`AuthContext.jsx` wraps Firebase Auth. It supports Google sign-in (`signInWithPopup`) and anonymous sign-in (`signInAnonymously`). On first sign-in, a `users` doc is created with rating 1200. Display names are deduplicated via the `usernames` collection using `ensureUniqueDisplayName`.
-
-### Key Patterns
-
-- **Jump move flag**: Jump moves are identified by `move.flags.includes('j')` and carry a `move.jumpedOver` square string.
-- **Variant checkmate vs standard**: Always use `game.isCheckmateRider()` / `game.isCheckRider()` instead of `chess.js`'s built-in `isCheckmate()` / `isCheck()` — the variant check logic differs.
-- **Firebase graceful degradation**: Every Firebase call is guarded by `firebaseEnabled`. The UI renders a "Local mode" badge when Firebase is unavailable.
-- **Clock synchronization**: Online clocks are computed client-side from `lastMoveAt` (server timestamp) + stored `whiteTimeLeft`/`blackTimeLeft`. The server does not push clock updates on a tick — each client interpolates.
-- **Vite base path**: The root `vite.config.js` auto-detects GitHub Actions deployments and sets the base path to `/<repo-name>/`. Override with `VITE_BASE_PATH`.
-- **Chess piece assets**: Custom piece sets are stored under `src/assets/chess/` (directories `blue` and `cburnett`).
+- Do not reintroduce client-only authoritative online move writes in strict mode.
+- Keep `/api/move` response/error codes stable (`STALE_MOVE_SEQ`, `ILLEGAL_MOVE`, etc.).
+- Keep bot DM behavior non-spammy: retryable AI errors should stay quiet to users.
+- Preserve fallback behavior when Firebase is not configured (`firebaseEnabled === false`).
