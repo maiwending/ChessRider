@@ -132,11 +132,19 @@ const formatClock = (seconds) => {
 
 const getPageFromLocation = () => {
   if (typeof window === 'undefined') return 'home';
-  if (/\/SignIn\/?$/.test(window.location.pathname)) return 'signin';
-  if (/\/Tutorials\/?$/.test(window.location.pathname)) return 'tutorials';
-  if (/\/Learn\/?$/.test(window.location.pathname)) return 'learn';
-  if (/\/Play\/?$/.test(window.location.pathname)) return 'game';
-  if (/\/uptime\/?$/i.test(window.location.pathname)) return 'uptime';
+
+  // GitHub Pages SPA redirect: 404.html encodes the intended route as ?p=/path
+  const redirected = new URLSearchParams(window.location.search).get('p');
+  if (redirected) {
+    window.history.replaceState(null, '', APP_BASE_PATH + redirected);
+  }
+  const path = redirected || window.location.pathname;
+
+  if (/\/SignIn\/?$/.test(path)) return 'signin';
+  if (/\/Tutorials\/?$/.test(path)) return 'tutorials';
+  if (/\/Learn\/?$/.test(path)) return 'learn';
+  if (/\/Play\/?$/.test(path)) return 'game';
+  if (/\/uptime\/?$/i.test(path)) return 'uptime';
   return 'home';
 };
 

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KnightAuraChess</title>
+    <script>
+      (function () {
+        var path = window.location.pathname.replace(/\/+$/, '');
+        var match = path.match(/^(.*\/KnightAuraChess)(\/.*)?$/);
+        var base = match ? match[1] : '';
+        var route = match && match[2] ? match[2] : '/';
+        var next = (base || '') + '/?p=' + encodeURIComponent(route) + window.location.hash;
+        window.location.replace(next);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
