@@ -4,8 +4,17 @@
   "description": "Chess variant where pieces near knights can jump over blockers",
   "type": "module",
   "main": "src/KnightJumpChess.js",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
-    "test": "node --test src/engine.test.mjs",
+    "lint": "eslint .",
+    "test:engine": "node --test src/engine.test.mjs",
+    "test:ui": "vitest run",
+    "test:e2e": "playwright test",
+    "test:rules": "node --test src/firestore.rules.test.mjs",
+    "test:rules:emulator": "firebase emulators:exec --only firestore \"npm run test:rules\"",
+    "test": "npm run test:engine && npm run test:ui",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
@@ -18,15 +27,28 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "chess.js": "^1.0.0-beta.8",
-    "firebase": "^10.14.1",
-    "react": "^19.2.4",
-    "react-chessboard": "^5.8.6",
-    "react-dom": "^19.2.4",
+    "chess.js": "^1.4.0",
+    "firebase": "^12.12.0",
+    "react": "^19.2.5",
+    "react-chessboard": "^5.10.0",
+    "react-dom": "^19.2.5",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.2",
-    "vite": "^5.0.0"
+    "@playwright/test": "^1.54.2",
+    "@eslint/js": "^9.24.0",
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.24.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "firebase-tools": "^14.23.0",
+    "globals": "^16.4.0",
+    "jsdom": "^27.0.1",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }

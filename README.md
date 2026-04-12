@@ -43,15 +43,18 @@ KNightAuraChess features a completely custom game engine that natively supports 
 ## 📦 Installation & Local Development
 
 ### Prerequisites
-*   Node.js v18+ 
+*   Node.js v20.19+ 
 *   A Firebase Project (Firestore + Authentication)
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/maiwending/ChessRider.git
-cd ChessRider
+git clone https://github.com/bobwdmai/KnightAuraChess.git
+cd KnightAuraChess
+
+# Use the repo's Node version
+nvm use
 
 # Install dependencies
 npm install
@@ -74,33 +77,70 @@ VITE_FIREBASE_APP_ID="your_app_id"
 ```bash
 npm run dev
 ```
-Open `http://localhost:5174` in your browser.
+Open the local URL shown by Vite in your browser.
 
 ## 🔐 Firebase Security Rules
 
-To ensure proper multiplayer security and Elo ranking point allocations, you must paste the following into your **Firebase Console -> Firestore Database -> Rules** tab:
+Firestore rules are part of the app. After changing [firestore.rules](./firestore.rules), deploy them:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
+```bash
+firebase deploy --only firestore:rules
+```
 
-    match /users/{uid} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
+This is required for online features such as game chat and peer voice signaling.
 
-    match /games/{gameId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.whiteId == request.auth.uid;
-      allow update, delete: if isSignedIn();
-    }
-  }
+## 🧭 Authoritative Move API (Rollout)
+
+The client now supports an optional server-first move pipeline.
+
+Enable it with:
+
+```env
+VITE_MOVE_API_ENABLED="true"
+VITE_MOVE_API_STRICT="true"
+VITE_MOVE_API_URL="/api/move"
+```
+
+Backend env required by `functions/api/move.js`:
+
+```env
+FIREBASE_PROJECT_ID="your-project-id"
+FIREBASE_WEB_API_KEY="your-web-api-key"
+FIREBASE_SERVICE_ACCOUNT_EMAIL="service-account@your-project.iam.gserviceaccount.com"
+FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Client contract (`POST /api/move`):
+
+```json
+{
+  "gameId": "abc123",
+  "from": "e2",
+  "to": "e4",
+  "promotion": null,
+  "expectedMoveSeq": 12
 }
 ```
+
+Expected success response:
+
+```json
+{
+  "ok": true,
+  "gameId": "abc123",
+  "moveSeq": 13,
+  "status": "active"
+}
+```
+
+`functions/api/move.js` now implements server-side move execution (auth check, legality check, sequence check, clocks/result update, and rating updates on game end).  
+If `VITE_MOVE_API_STRICT="true"`, the client no longer falls back to direct Firestore move writes.
+
+Additional hardening now included in the endpoint:
+- OAuth access token cache (refreshes before expiry)
+- Firebase ID-token verification cache with claim skew checks
+- Hard rate limits (per user+game burst and per-user minute window)
+- Structured JSON logs (`move_request_received`, `move_request_accepted`, `move_request_rejected`)
 
 ## 🚀 Deployment (Cloudflare Pages)
 

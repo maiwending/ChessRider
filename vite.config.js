@@ -8,6 +8,19 @@ const defaultBase =
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || defaultBase,
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('/firebase/')) return 'firebase'
+          if (id.includes('/react/') || id.includes('/react-dom/')) return 'react-vendor'
+          if (id.includes('/chess.js/') || id.includes('/react-chessboard/')) return 'chess-vendor'
+          return 'vendor'
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     open: true,

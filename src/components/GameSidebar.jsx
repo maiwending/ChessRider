@@ -1,6 +1,8 @@
 import React, { Suspense, lazy } from 'react';
 import ThemeCreator, { themeToVars } from './ThemeCreator.jsx';
+import CoachHintsPanel from './CoachHintsPanel.jsx';
 import PlayTabPanel from './PlayTabPanel.jsx';
+import GameReviewTimeline from './GameReviewTimeline.jsx';
 import { firebaseEnabled } from '../utils/firebase.js';
 
 const LeaderboardPanel = lazy(() => import('./LeaderboardPanel.jsx'));
@@ -24,6 +26,9 @@ export default function GameSidebar({
   aiEnabled,
   moveTimestamps,
   formatTime,
+  gameData,
+  isOnline,
+  localResultText,
   gamesProps,
   settingsProps,
   rankingsProps,
@@ -72,6 +77,16 @@ export default function GameSidebar({
             <div className="moves-list">
               {moveTable}
             </div>
+            <GameReviewTimeline
+              moveHistory={moveHistory}
+              isOnline={isOnline}
+              gameData={gameData}
+              localResultText={localResultText}
+            />
+            <CoachHintsPanel
+              moveHistory={moveHistory}
+              moveTimestamps={moveTimestamps}
+            />
             {moveHistory.length > 0 && aiEnabled && (
               <div className="time-summary" style={{ marginTop: 10 }}>
                 <div className="summary-item">

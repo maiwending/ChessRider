@@ -12,6 +12,7 @@ import {
   where
 } from 'firebase/firestore';
 import { db, firebaseEnabled } from '../utils/firebase.js';
+import { isBotUid } from '../utils/textAi.js';
 import {
   claimDisplayName,
   INVALID_USERNAME_ERROR,
@@ -169,11 +170,11 @@ export default function UserProfileModal({ profileUid, currentUser, currentUserN
       fromName: currentUserName,
       to: profileUid,
       toName: profile.displayName || 'Player',
-      status: 'pending',
+      status: isBotUid(profileUid) ? 'accepted' : 'pending',
       createdAt: serverTimestamp()
     });
     setFriendReqId(docRef.id);
-    setFriendStatus('pending_sent');
+    setFriendStatus(isBotUid(profileUid) ? 'accepted' : 'pending_sent');
   };
 
   const handleMessage = () => {

@@ -92,3 +92,47 @@ test('pawns can still jump diagonally to capture when the landing square has an 
   assert.ok(jumpCapture.flags.includes('j'));
   assert.ok(jumpCapture.flags.includes('c'));
 });
+
+test('pawns offer all standard promotion choices on the last rank', () => {
+  const game = new KnightJumpChess();
+  game.clear();
+  game.put({ type: 'k', color: 'w' }, 'e1');
+  game.put({ type: 'k', color: 'b' }, 'e8');
+  game.put({ type: 'p', color: 'w' }, 'a7');
+
+  const moves = game.moves({ square: 'a7', verbose: true });
+  const promotions = moves
+    .filter((move) => move.to === 'a8')
+    .map((move) => move.promotion)
+    .sort();
+
+  assert.deepEqual(promotions, ['b', 'n', 'q', 'r']);
+
+  const result = game.move({ from: 'a7', to: 'a8', promotion: 'r' });
+  assert.ok(result);
+  assert.equal(game.get('a8')?.type, 'r');
+});
+
+test('jump promotions offer rook queen bishop and knight choices', () => {
+  const game = new KnightJumpChess();
+  game.clear();
+  game.put({ type: 'k', color: 'w' }, 'e1');
+  game.put({ type: 'k', color: 'b' }, 'h8');
+  game.put({ type: 'n', color: 'w' }, 'd5');
+  game.put({ type: 'p', color: 'w' }, 'e6');
+  game.put({ type: 'p', color: 'b' }, 'e7');
+
+  const moves = game.moves({ square: 'e6', verbose: true });
+  const jumpPromotions = moves
+    .filter((move) => move.to === 'e8' && move.flags.includes('j'));
+
+  const promotionTargets = jumpPromotions
+    .map((move) => move.promotion);
+
+  assert.deepEqual(promotionTargets.sort(), ['b', 'n', 'q', 'r']);
+
+  const result = game.move({ from: 'e6', to: 'e8', promotion: 'b' });
+  assert.ok(result);
+  assert.equal(game.get('e8')?.type, 'b');
+  assert.ok(result.flags.includes('j'));
+});

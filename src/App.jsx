@@ -20,6 +20,7 @@ import {
 import KnightJumpChess from './KnightJumpChess.js';
 import AppHeader from './components/AppHeader.jsx';
 import AppPageRouter from './components/AppPageRouter.jsx';
+import RuntimeErrorBoundary from './components/RuntimeErrorBoundary.jsx';
 import SeasonDecorations from './components/SeasonDecorations.jsx';
 import { themeToVars } from './components/ThemeCreator.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
@@ -28,6 +29,7 @@ import {
   BOARD_HAND_TOTAL_MS,
 } from './utils/boardHandAnimation.js';
 import { db, firebaseEnabled } from './utils/firebase.js';
+import { moveApiEnabled, moveApiStrict, submitAuthoritativeMove } from './utils/moveApi.js';
 import './App.css';
 const UserProfileModal = React.lazy(() => import('./components/UserProfileModal.jsx'));
 
@@ -69,6 +71,7 @@ const TIME_CONTROLS = [
   { label: '30 min', seconds: 1800 },
 ];
 const DEFAULT_TIME_CONTROL = 300;
+const PRACTICE_STATE_KEY = 'cr_practice_state';
 const BOARD_VIEW_MODES = ['flat', 'realistic'];
 const BASE_THEMES = [
   { key: 'classic', label: 'Classic', l: 'swatch-classic-light', d: 'swatch-classic-dark' },
@@ -109,6 +112,7 @@ const buildMoveAnimationPayload = (board, moveLike, actor = 'self') => {
 };
 
 const formatTurn = (turn) => (turn === 'w' ? 'White' : 'Black');
+const getMoveSeq = (data) => (Number.isFinite(data?.moveSeq) ? data.moveSeq : 0);
 
 const formatTime = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -175,6 +179,8 @@ export default function App() {
   const [gameData, setGameData] = useState(null);
   const [matchStatus, setMatchStatus] = useState('idle');
   const [matchError, setMatchError] = useState('');
+  const [connectionState, setConnectionState] = useState('offline');
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
   const [movePending, setMovePending] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('cr_theme') || 'classic');
   const [customThemes, setCustomThemes] = useState(() => JSON.parse(localStorage.getItem('cr_custom_themes') || '[]'));
@@ -211,7 +217,11 @@ export default function App() {
   const [clockBlack, setClockBlack] = useState(null);
   const [localResult, setLocalResult] = useState(null);
   const [moveAnimation, setMoveAnimation] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const timeoutFiredRef = useRef(false);
+  const toastTimersRef = useRef(new Map());
+  const hasHydratedPracticeRef = useRef(false);
+  const lastSnapshotAtRef = useRef(0);
   const localResultRef = useRef(null);
   const lastAiFenRef = useRef(null);
   const aiRequestIdRef = useRef(0);
@@ -250,6 +260,146 @@ export default function App() {
       navigateToPage('game', true);
     }
   }, [currentPage, navigateToPage, user]);
+
+  useEffect(() => {
+    if (hasHydratedPracticeRef.current) return;
+    hasHydratedPracticeRef.current = true;
+    if (gameId) return;
+    const raw = localStorage.getItem(PRACTICE_STATE_KEY);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      if (saved?.fen) setGame(new KnightJumpChess(saved.fen));
+      if (Array.isArray(saved?.moveHistory)) setMoveHistory(saved.moveHistory);
+      if (saved?.lastMove?.from && saved?.lastMove?.to) setLastMove(saved.lastMove);
+      if (Number.isFinite(saved?.selectedTimeControl)) setSelectedTimeControl(saved.selectedTimeControl);
+      if (typeof saved?.aiEnabled === 'boolean') setAiEnabled(saved.aiEnabled);
+      if (typeof saved?.aiDifficulty === 'string' && AI_DIFFICULTY_LEVELS.includes(saved.aiDifficulty)) {
+        setAiDifficulty(saved.aiDifficulty);
+      }
+      if (Array.isArray(saved?.moveTimestamps) && saved.moveTimestamps.length > 0) {
+        setMoveTimestamps(saved.moveTimestamps);
+      }
+      if (saved?.localResult) setLocalResult(saved.localResult);
+    } catch {
+      localStorage.removeItem(PRACTICE_STATE_KEY);
+    }
+  }, [gameId]);
+
+  useEffect(() => {
+    if (isOnline) {
+      localStorage.removeItem(PRACTICE_STATE_KEY);
+      return;
+    }
+    const payload = {
+      fen: game.fen(),
+      moveHistory,
+      lastMove,
+      selectedTimeControl,
+      aiEnabled,
+      aiDifficulty,
+      moveTimestamps,
+      localResult,
+    };
+    localStorage.setItem(PRACTICE_STATE_KEY, JSON.stringify(payload));
+  }, [aiDifficulty, aiEnabled, game, isOnline, lastMove, localResult, moveHistory, moveTimestamps, selectedTimeControl]);
+
+  useEffect(() => {
+    if (!isOnline) {
+      setConnectionState('offline');
+      return undefined;
+    }
+    setConnectionState('connecting');
+    const updateStateFromNetwork = () => {
+      if (!navigator.onLine) {
+        setConnectionState('offline');
+        return;
+      }
+      const sinceSnapshot = Date.now() - (lastSnapshotAtRef.current || 0);
+      if (lastSnapshotAtRef.current === 0 || sinceSnapshot > 9000) {
+        setConnectionState('reconnecting');
+      } else {
+        setConnectionState('live');
+      }
+    };
+    const onlineHandler = () => updateStateFromNetwork();
+    const offlineHandler = () => setConnectionState('offline');
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('offline', offlineHandler);
+    const timer = setInterval(updateStateFromNetwork, 2000);
+    updateStateFromNetwork();
+    return () => {
+      window.removeEventListener('online', onlineHandler);
+      window.removeEventListener('offline', offlineHandler);
+      clearInterval(timer);
+    };
+  }, [isOnline]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qaScenario = params.get('qaScenario');
+    if (!qaScenario || isOnline || currentPage !== 'game') return;
+
+    if (qaScenario === 'promotion') {
+      setAiEnabled(false);
+      setGame(new KnightJumpChess('8/P7/8/8/8/8/5k2/7K w - - 0 1'));
+      setMoveHistory([]);
+      setLastMove(null);
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      setPendingPromotion(null);
+      setLocalResult(null);
+      return;
+    }
+
+    if (qaScenario === 'timeout') {
+      setAiEnabled(true);
+      setSelectedTimeControl(1);
+      setGame(createNewGame());
+      setMoveHistory([]);
+      setLastMove(null);
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      setPendingPromotion(null);
+      setMoveTimestamps([{ white: 0, black: 0 }]);
+      setCurrentMoveStartTime(Date.now() - 2500);
+      setLocalResult(null);
+    }
+  }, [currentPage, isOnline]);
+
+  const pushToast = useCallback((message, level = 'info') => {
+    if (!message) return;
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setToasts((previous) => [...previous.slice(-3), { id, message, level }]);
+    const timer = setTimeout(() => {
+      setToasts((previous) => previous.filter((toast) => toast.id !== id));
+      toastTimersRef.current.delete(id);
+    }, 5000);
+    toastTimersRef.current.set(id, timer);
+  }, []);
+
+  useEffect(() => () => {
+    toastTimersRef.current.forEach((timer) => clearTimeout(timer));
+    toastTimersRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    const handleWindowError = (event) => {
+      pushToast(event?.message || 'Unexpected runtime error', 'error');
+    };
+    const handleUnhandledRejection = (event) => {
+      const reasonMessage =
+        event?.reason?.message
+        || (typeof event?.reason === 'string' ? event.reason : 'Unhandled async error');
+      pushToast(reasonMessage, 'error');
+    };
+    window.addEventListener('error', handleWindowError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', handleWindowError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, [pushToast]);
 
   useEffect(() => {
     gameRef.current = game;
@@ -464,6 +614,8 @@ export default function App() {
     hasLoadedOnlineGameRef.current = false;
     const gameDocRef = doc(db, GAMES_COLLECTION, gameId);
     const unsub = onSnapshot(gameDocRef, (snap) => {
+      lastSnapshotAtRef.current = Date.now();
+      setConnectionState('live');
       if (!snap.exists()) {
         setGameId(null);
         setGameData(null);
@@ -724,7 +876,7 @@ export default function App() {
     const delay = Math.max(0, 60000 - (Date.now() - createdMs));
     const timer = setTimeout(addBotOpponent, delay);
     return () => clearTimeout(timer);
-  }, [isOnline, gameData?.status, gameData?.whiteId, gameData?.blackId, gameData?.createdAt, user?.uid, addBotOpponent]);
+  }, [isOnline, gameData, user, addBotOpponent]);
 
   // ── Trigger AI move when it's the bot's turn in an online bot game ──
   useEffect(() => {
@@ -736,10 +888,10 @@ export default function App() {
     if (botMovePendingRef.current) return;
     botMovePendingRef.current = true;
     requestAiMove(gameData.fen, [], [], 'hard');
-  }, [isOnline, gameData?.status, gameData?.blackId, gameData?.fen, requestAiMove]);
+  }, [isOnline, gameData, requestAiMove]);
 
   // ── Game actions ──
-  const resetPractice = () => {
+  const resetPractice = useCallback(() => {
     const newGame = createNewGame();
     setGame(newGame);
     setMoveHistory([]);
@@ -752,6 +904,39 @@ export default function App() {
     setLocalResult(null);
     setMoveAnimation(null);
     lastAnimatedMoveRef.current = null;
+  }, []);
+
+  const closeSetupModal = () => setSetupModalOpen(false);
+
+  const handleStartPracticeFromSetup = () => {
+    setAiEnabled(false);
+    resetPractice();
+    setSetupModalOpen(false);
+    navigateToPage('game');
+  };
+
+  const handleStartAiFromSetup = () => {
+    setAiEnabled(true);
+    resetPractice();
+    setSetupModalOpen(false);
+    navigateToPage('game');
+  };
+
+  const handleStartOnlineFromSetup = async () => {
+    if (!user) {
+      setSetupModalOpen(false);
+      navigateToPage('signin');
+      return;
+    }
+    if (isOnline) {
+      setSetupModalOpen(false);
+      return;
+    }
+    setAiEnabled(false);
+    resetPractice();
+    setSetupModalOpen(false);
+    navigateToPage('game');
+    await startMatchmaking();
   };
 
   const handleSquareClick = (square) => {
@@ -787,6 +972,7 @@ export default function App() {
         setPendingPromotion({
           from: selectedSquare,
           to: square,
+          color: promotionMoves[0].color,
           moves: promotionMoves,
         });
         return;
@@ -855,9 +1041,39 @@ export default function App() {
 
   const handleOnlineMove = async (moveObj) => {
     if (!gameId || !gameData || movePending || !user) return;
+    const expectedMoveSeq = getMoveSeq(gameData);
     setMovePending(true);
     setMatchError('');
+    setConnectionState((current) => (current === 'offline' ? current : 'connecting'));
     try {
+      if (moveApiEnabled) {
+        try {
+          let idToken = null;
+          try {
+            idToken = await user.getIdToken?.();
+          } catch {
+            idToken = null;
+          }
+          const apiResult = await submitAuthoritativeMove({
+            gameId,
+            from: moveObj.from,
+            to: moveObj.to,
+            promotion: moveObj.promotion || null,
+            expectedMoveSeq,
+            idToken,
+            idempotencyKey: `${gameId}:${expectedMoveSeq}:${moveObj.from}:${moveObj.to}:${moveObj.promotion || ''}`,
+          });
+          if (apiResult?.ok) {
+            // Authoritative backend accepted move; Firestore listener will apply the update.
+            return;
+          }
+        } catch (apiError) {
+          if (moveApiStrict || !['NOT_CONFIGURED', 'SERVICE_UNAVAILABLE'].includes(apiError?.code)) {
+            throw apiError;
+          }
+        }
+      }
+
       const gameRef = doc(db, GAMES_COLLECTION, gameId);
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(gameRef);
@@ -865,6 +1081,10 @@ export default function App() {
 
         const data = snap.data();
         if (data.status !== 'active') throw new Error('Game is not active');
+        const currentMoveSeq = getMoveSeq(data);
+        if (currentMoveSeq !== expectedMoveSeq) {
+          throw new Error('RESYNC_REQUIRED');
+        }
 
         const currentPlayerColor =
           data.whiteId === user.uid ? 'w' : data.blackId === user.uid ? 'b' : null;
@@ -980,8 +1200,10 @@ export default function App() {
             from: moveObj.from,
             to: moveObj.to,
             san: moveResult.san || null,
-            by: user.uid
+            by: user.uid,
+            seq: currentMoveSeq + 1
           },
+          moveSeq: currentMoveSeq + 1,
           status: nextStatus,
           result,
           winner,
@@ -995,13 +1217,24 @@ export default function App() {
       });
     } catch (error) {
       console.error('Move error:', error);
-      setMatchError(error.message || 'Failed to make move');
+      if (error?.message === 'RESYNC_REQUIRED' || error?.code === 'RESYNC_REQUIRED') {
+        setConnectionState('reconnecting');
+        pushToast('Board was out of date. Resyncing latest position...', 'error');
+        setMatchError('Board changed on another client. Resyncing...');
+      } else if (error?.code === 'STALE_MOVE_SEQ') {
+        setConnectionState('reconnecting');
+        setMatchError('Position changed before your move landed. Resyncing...');
+      } else if (error?.code === 'SERVICE_UNAVAILABLE') {
+        setMatchError('Move service unavailable. Falling back to direct sync.');
+      } else {
+        setMatchError(error.message || 'Failed to make move');
+      }
     } finally {
       setMovePending(false);
     }
   };
 
-  const handlePromotionChoice = useCallback((promotion) => {
+  const handlePromotionChoice = (promotion) => {
     if (!pendingPromotion) return;
     const moveObj = pendingPromotion.moves.find((move) => move.promotion === promotion) || pendingPromotion.moves[0];
     if (!moveObj) {
@@ -1018,7 +1251,7 @@ export default function App() {
     setSelectedSquare(null);
     setLegalMoves([]);
     setPendingPromotion(null);
-  }, [gameId, isOnline, pendingPromotion]);
+  };
 
   const handleBotOnlineMove = useCallback(async (moveMsg) => {
     if (!gameId || !db) return;
@@ -1029,6 +1262,7 @@ export default function App() {
         if (!snap.exists()) return;
         const data = snap.data();
         if (data.status !== 'active' || !data.blackId?.startsWith('bot_')) return;
+        const currentMoveSeq = getMoveSeq(data);
         const gameCopy = new KnightJumpChess(data.fen);
         if (gameCopy.turn() !== 'b') return;
         const moveResult = gameCopy.move({ from: moveMsg.from, to: moveMsg.to, promotion: moveMsg.promotion || 'q' });
@@ -1091,7 +1325,14 @@ export default function App() {
         tx.update(gameRef, {
           fen: gameCopy.fen(),
           moveHistory: newHistory,
-          lastMove: { from: moveMsg.from, to: moveMsg.to, san: moveResult.san || null, by: data.blackId },
+          lastMove: {
+            from: moveMsg.from,
+            to: moveMsg.to,
+            san: moveResult.san || null,
+            by: data.blackId,
+            seq: currentMoveSeq + 1
+          },
+          moveSeq: currentMoveSeq + 1,
           status: nextStatus,
           result,
           winner,
@@ -1173,6 +1414,7 @@ export default function App() {
         blackRating: null,
         fen: newGame.fen(),
         moveHistory: [],
+        moveSeq: 0,
         timeControl: selectedTimeControl,
         whiteTimeLeft: selectedTimeControl,
         blackTimeLeft: selectedTimeControl,
@@ -1205,6 +1447,7 @@ export default function App() {
         blackRating: null,
         fen: newGame.fen(),
         moveHistory: [],
+        moveSeq: 0,
         timeControl: selectedTimeControl,
         whiteTimeLeft: selectedTimeControl,
         blackTimeLeft: selectedTimeControl,
@@ -1347,6 +1590,7 @@ export default function App() {
         blackRating: null,
         fen: newGame.fen(),
         moveHistory: [],
+        moveSeq: 0,
         timeControl: selectedTimeControl,
         whiteTimeLeft: selectedTimeControl,
         blackTimeLeft: selectedTimeControl,
@@ -1592,14 +1836,26 @@ export default function App() {
 
   const homePageProps = {
     user,
+    authReady,
+    profile,
+    rating,
     firebaseEnabled,
+    incomingChallenge,
     onPlayGuest: () => {
       setAiEnabled(false);
       resetPractice();
       navigateToPage('game');
     },
-    onSignIn: () => navigateToPage(user ? 'game' : 'signin'),
+    onSignIn: () => navigateToPage('signin'),
+    onOpenAccount: () => {
+      if (user) setProfileModalUid(user.uid);
+    },
     onHowItWorks: () => navigateToPage('learn'),
+    onAcceptChallenge: async () => {
+      await acceptChallenge();
+      navigateToPage('game');
+    },
+    onDeclineChallenge: declineChallenge,
   };
 
   const signInPageProps = {
@@ -1624,6 +1880,7 @@ export default function App() {
     aiEnabled,
     playerColor,
     aiDifficulty,
+    connectionState,
     gameStatusText: gameStatusText(),
     incomingChallenge,
     onAcceptChallenge: acceptChallenge,
@@ -1649,6 +1906,7 @@ export default function App() {
     onChoosePromotion: handlePromotionChoice,
     onCancelPromotion: () => setPendingPromotion(null),
     onFlipBoard: () => setFlipped(!flipped),
+    onOpenSetup: () => setSetupModalOpen(true),
     onNewGame: resetPractice,
     onStopAi: () => {
       setAiEnabled(false);
@@ -1664,6 +1922,23 @@ export default function App() {
     user,
     displayName,
     liveVoiceChat,
+    setupModalProps: {
+      isOpen: setupModalOpen,
+      onClose: closeSetupModal,
+      user,
+      timeControls: TIME_CONTROLS,
+      selectedTimeControl,
+      onSelectTimeControl: handleSelectTimeControl,
+      boardView,
+      onSelectBoardView: setBoardView,
+      aiDifficulty,
+      aiDifficultyLevels: AI_DIFFICULTY_LEVELS,
+      onSelectAiDifficulty: setAiDifficulty,
+      onStartPractice: handleStartPracticeFromSetup,
+      onStartAi: handleStartAiFromSetup,
+      onStartOnline: handleStartOnlineFromSetup,
+      isOnline,
+    },
   };
 
   const sidebarProps = {
@@ -1705,6 +1980,9 @@ export default function App() {
     aiEnabled,
     moveTimestamps,
     formatTime,
+    gameData,
+    isOnline,
+    localResultText: localResult?.text || null,
     gamesProps: {
       user,
       isOnline,
@@ -1769,14 +2047,21 @@ export default function App() {
       />
       <div className="left-bg-art" aria-hidden="true" />
       {seasonalDecorations && <SeasonDecorations density={seasonalDecorationDensity} />}
-      <AppPageRouter
-        currentPage={currentPage}
-        onNavigate={navigateToPage}
-        homePageProps={homePageProps}
-        signInPageProps={signInPageProps}
-        boardShellProps={boardShellProps}
-        sidebarProps={sidebarProps}
-      />
+      <RuntimeErrorBoundary
+        onError={(error) => {
+          console.error('Render boundary caught error:', error);
+          pushToast('A view crashed and was paused. Use Retry View to continue.', 'error');
+        }}
+      >
+        <AppPageRouter
+          currentPage={currentPage}
+          onNavigate={navigateToPage}
+          homePageProps={homePageProps}
+          signInPageProps={signInPageProps}
+          boardShellProps={boardShellProps}
+          sidebarProps={sidebarProps}
+        />
+      </RuntimeErrorBoundary>
 
       {/* ── Profile Modal ── */}
       {profileModalUid && (
@@ -1794,6 +2079,17 @@ export default function App() {
           />
         </Suspense>
       )}
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`toast toast--${toast.level}`}
+            role="status"
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

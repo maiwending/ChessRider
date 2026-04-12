@@ -52,6 +52,30 @@ service cloud.firestore {
       ]);
     }
 
+    function isGameParticipant(gameId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/games/$(gameId)) &&
+        (
+          get(/databases/$(database)/documents/games/$(gameId)).data.whiteId == request.auth.uid ||
+          get(/databases/$(database)/documents/games/$(gameId)).data.blackId == request.auth.uid
+        );
+    }
+
+    function isMoveStateUpdate() {
+      return request.resource.data.fen != resource.data.fen;
+    }
+
+    function hasValidMoveSeqTransition() {
+      return request.resource.data.moveSeq is int &&
+        request.resource.data.lastMove is map &&
+        request.resource.data.lastMove.seq is int &&
+        request.resource.data.lastMove.seq == request.resource.data.moveSeq &&
+        (
+          (resource.data.moveSeq is int && request.resource.data.moveSeq == resource.data.moveSeq + 1) ||
+          (!(resource.data.moveSeq is int) && request.resource.data.moveSeq == 1)
+        );
+    }
+
     function isValidUsernameClaim(usernameKey, data) {
       return data.keys().hasOnly([
           'uid',
@@ -62,6 +86,19 @@ service cloud.firestore {
         data.uid == request.auth.uid &&
         isValidHumanDisplayName(data.displayName) &&
         usernameKey == data.displayName.lower();
+    }
+
+    function isValidDmParticipants(data) {
+      return data.participants is list &&
+        data.participants.size() == 2 &&
+        data.participants[0] is string &&
+        data.participants[1] is string;
+    }
+
+    function isDmParticipant(data) {
+      return isSignedIn() &&
+        isValidDmParticipants(data) &&
+        data.participants.hasAny([request.auth.uid]);
     }
 
     match /users/{uid} {
@@ -96,7 +133,9 @@ service cloud.firestore {
     match /games/{gameId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.whiteId == request.auth.uid;
-      allow update, delete: if isSignedIn();
+      allow update: if isGameParticipant(gameId) &&
+        (!isMoveStateUpdate() || hasValidMoveSeqTransition());
+      allow delete: if isGameParticipant(gameId);
 
       match /messages/{messageId} {
         allow read: if isSignedIn();
@@ -105,6 +144,18 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 200;
+      }
+
+      match /voice/{voiceDocId} {
+        allow read, write: if isGameParticipant(gameId);
+      }
+
+      match /voiceSessions/{sessionId} {
+        allow read, write: if isGameParticipant(gameId);
+
+        match /{candidateCollection}/{candidateId} {
+          allow read, write: if isGameParticipant(gameId);
+        }
       }
     }
 
@@ -115,11 +166,16 @@ service cloud.firestore {
     }
 
     match /dms/{chatId} {
-      allow read, write: if isSignedIn();
+      allow read: if isDmParticipant(resource.data);
+      allow create: if isDmParticipant(request.resource.data);
+      allow update: if isDmParticipant(resource.data) &&
+        request.resource.data.participants == resource.data.participants;
+      allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow read: if isDmParticipant(get(/databases/$(database)/documents/dms/$(chatId)).data);
+        allow create: if isDmParticipant(get(/databases/$(database)/documents/dms/$(chatId)).data) &&
+          request.resource.data.senderId == request.auth.uid;
       }
     }
 

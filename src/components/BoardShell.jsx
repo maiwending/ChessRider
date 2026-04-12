@@ -1,6 +1,8 @@
 import React, { Suspense, lazy } from 'react';
 import ChessBoard from './ChessBoard.jsx';
 import PlayerBar from './PlayerBar.jsx';
+import PromotionPicker from './PromotionPicker.jsx';
+import PreGameSetupModal from './PreGameSetupModal.jsx';
 
 const GameChat = lazy(() => import('./GameChat.jsx'));
 
@@ -11,6 +13,7 @@ export default function BoardShell({
   aiEnabled,
   playerColor,
   aiDifficulty,
+  connectionState,
   gameStatusText,
   incomingChallenge,
   onAcceptChallenge,
@@ -36,6 +39,7 @@ export default function BoardShell({
   onChoosePromotion,
   onCancelPromotion,
   onFlipBoard,
+  onOpenSetup,
   onNewGame,
   onStopAi,
   onLeaveMatch,
@@ -48,7 +52,16 @@ export default function BoardShell({
   user,
   displayName,
   liveVoiceChat,
+  setupModalProps,
 }) {
+  const connectionLabel = connectionState === 'live'
+    ? 'Live'
+    : connectionState === 'reconnecting'
+      ? 'Reconnecting'
+      : connectionState === 'connecting'
+        ? 'Connecting'
+        : 'Offline';
+
   return (
     <section className={`board-section${board3d ? ' board-section--3d' : ''}${boardView === 'realistic' ? ' board-section--realistic' : ''}`}>
       <div className="board-header">
@@ -57,6 +70,9 @@ export default function BoardShell({
           {isOnline ? 'Live Match' : aiEnabled ? 'vs AI' : 'Practice'}
         </div>
         <span className="game-status-text">{gameStatusText}</span>
+        {isOnline && (
+          <span className={`connection-chip connection-chip--${connectionState}`}>{connectionLabel}</span>
+        )}
         {isOnline && playerColor && (
           <div className="player-chip">{playerColor === 'w' ? 'White' : 'Black'}</div>
         )}
@@ -118,29 +134,11 @@ export default function BoardShell({
       />
 
       {pendingPromotion && (
-        <div className="promotion-picker" role="dialog" aria-label="Choose promotion piece">
-          <p className="promotion-picker__title">Promote pawn to</p>
-          <div className="promotion-picker__options">
-            {[
-              { key: 'q', label: 'Queen' },
-              { key: 'r', label: 'Rook' },
-              { key: 'b', label: 'Bishop' },
-              { key: 'n', label: 'Knight' },
-            ].map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                className="promotion-picker__option"
-                onClick={() => onChoosePromotion(option.key)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="promotion-picker__cancel" onClick={onCancelPromotion}>
-            Cancel
-          </button>
-        </div>
+        <PromotionPicker
+          color={pendingPromotion.color || 'w'}
+          onChoosePromotion={onChoosePromotion}
+          onCancelPromotion={onCancelPromotion}
+        />
       )}
 
       <PlayerBar position="bottom" formatClock={formatClock} {...bottomPlayer} />
@@ -148,6 +146,9 @@ export default function BoardShell({
       <div className="board-actions">
         <button className="btn btn-ghost" onClick={onFlipBoard} title="Flip board">
           ⇅ Flip
+        </button>
+        <button className="btn btn-ghost" onClick={onOpenSetup} title="Game setup">
+          ⚙ Setup
         </button>
         <button className="btn btn-ghost" onClick={onNewGame} disabled={isOnline} title="New game">
           + New
@@ -185,6 +186,8 @@ export default function BoardShell({
           />
         </Suspense>
       )}
+
+      <PreGameSetupModal {...setupModalProps} />
     </section>
   );
 }
